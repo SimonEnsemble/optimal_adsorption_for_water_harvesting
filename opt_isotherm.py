@@ -223,8 +223,9 @@ def _(
 ):
     class Weather:
         def __init__(
-            self, year, location, time_to_hour={'day': 15, 'night': 5}
+            self, month, year, location, time_to_hour={'day': 15, 'night': 5}
         ):
+            self.month = month
             self.year = year
             self.location = location
 
@@ -290,6 +291,11 @@ def _(
                 pd.Timedelta(hours=h) for h in self.raw_data["LST_TIME"] / 100
             ]
             self.raw_data["datetime"] = self.raw_data["date"] + self.raw_data["time"]
+
+            # filter by month
+            self.raw_data = self.raw_data.loc[
+                self.raw_data["datetime"].dt.month == self.month
+            ]
 
             self._infer_surface_RH()
 
@@ -441,8 +447,14 @@ def _(
 
 
 @app.cell
+def _(weather):
+    weather.raw_data.loc[weather.raw_data["datetime"].dt.month == 5]
+    return
+
+
+@app.cell
 def _(Weather):
-    weather = Weather(2024, "Tucson")
+    weather = Weather(5, 2024, "Tucson")
     weather.raw_data
     return (weather,)
 
@@ -531,13 +543,12 @@ def _(mo):
 
 @app.cell
 def _(WaterAdsorptionIsotherm, np, score_fitness, weather):
-    dim = 8
     pop_size = 50
 
     wais = [WaterAdsorptionIsotherm(8) for _ in range(pop_size)]
 
     fitnesses = np.array([score_fitness(wai, weather) for wai in wais])
-    return fitnesses, wais
+    return fitnesses, pop_size, wais
 
 
 @app.cell
@@ -567,7 +578,10 @@ def _(WaterAdsorptionIsotherm, np, score_fitness, weather):
     def evolve(wais, n_elite=5, tourney_size=10, n_rand=5, n_mutate=10, eps=0.05):
         # what's the population size?
         pop_size = np.shape(wais)[0]
-    
+
+        # dim
+        dim = wais[0].n
+
         # compute fitnesses of each individual
         fitnesses = np.array([score_fitness(wai, weather) for wai in wais])
 
@@ -588,8 +602,9 @@ def _(WaterAdsorptionIsotherm, np, score_fitness, weather):
             id_b = ids_tourney[np.argsort(fitnesses[ids_tourney])[-2]]
 
             # mate
-            wai = WaterAdsorptionIsotherm(wais[0].n)
-            wai.bs = (wais[id_a].bs + wais[id_b].bs) / 2
+            wai = WaterAdsorptionIsotherm(dim)
+            alpha = np.random.rand()
+            wai.bs = alpha * wais[id_a].bs + (1 - alpha) * wais[id_b].bs
             new_wais.append(wai)
 
         # random births for exploration
@@ -602,12 +617,12 @@ def _(WaterAdsorptionIsotherm, np, score_fitness, weather):
             id = np.random.choice(np.arange(n_elite, pop_size))
 
             # mutation
-            delta_b = np.sort(eps * np.random.randn(wais[0].n+1))
-        
+            delta_b = eps * np.sort(np.random.rand(dim + 1))
+
             new_wais[id].bs += delta_b
             new_wais[id].bs[new_wais[id].bs < 0.0] = 0.0
             new_wais[id].bs[new_wais[id].bs > 1.0] = 1.0
-        
+
             # print("fitness A: ", fitnesses[id_a])
             # print("fitness B: ", fitnesses[id_b])
 
@@ -630,43 +645,143 @@ def _(evolve, fitnesses, np, plt, score_fitness, wais, weather):
 
 
 @app.cell
-def _(WaterAdsorptionIsotherm, evolve, np, plt, score_fitness, weather):
+def _(
+    WaterAdsorptionIsotherm,
+    evolve,
+    np,
+    plt,
+    pop_size,
+    score_fitness,
+    weather,
+):
     def do_evolution(n_generations, pop_size, dim=15):
         # generate population
         wais = [WaterAdsorptionIsotherm(dim) for _ in range(pop_size)]
 
         # fitness
         fitnesses = np.array([score_fitness(wai, weather) for wai in wais])
-    
+
         fitness_progress = np.zeros(n_generations)
         fitness_progress[0] = np.max(fitnesses)
-    
+
         for g in range(1, n_generations):
             wais = evolve(wais)
             fitnesses = np.array([score_fitness(wai, weather) for wai in wais])
             fitness_progress[g] = np.max(fitnesses)
 
         best_individual = wais[np.argmax(fitnesses)]
-    
+
         return fitness_progress, wais, best_individual
 
-    fitness_progress, evolved_wais, best_individual = do_evolution(50, 50)
+    n_generations = 100
+    dim = 20
+    fitness_progress, evolved_wais, opt_wai = do_evolution(
+        n_generations, pop_size, dim=dim
+    )
 
     plt.figure()
     plt.plot(range(np.size(fitness_progress)), fitness_progress)
+    plt.xlabel("iteration")
+    plt.ylabel("fitness")
     plt.show()
-    return (best_individual,)
+    return (opt_wai,)
 
 
 @app.cell
-def _(best_individual):
-    best_individual.draw()
+def _(opt_wai):
+    opt_wai.draw()
     return
 
 
 @app.cell
-def _(best_individual, weather):
-    best_individual.water_del_distn(weather)
+def _(colors, mpl, np, plt, score_fitness):
+    def draw_opt(opt_wai, weather):
+        p_over_p0s = np.linspace(0, 1, 100)
+
+        # fig, axs = plt.subplots(
+        #     2, 2, 
+        #     gridspec_kw={'height_ratios': [1, 3], 'width_ratios': [2, 1]},
+        #     figsize=(5, 7),
+        #     layout="constrained"
+        # )
+        fig = plt.figure(figsize=(5, 5))
+        gs = fig.add_gridspec(2, 2, height_ratios=[1, 3], width_ratios=[2, 1])
+        ax00 = fig.add_subplot(gs[0, 0])
+        ax10 = fig.add_subplot(gs[1, 0], sharex=ax00) # Only these two share
+        ax01 = fig.add_subplot(gs[0, 1])
+        ax11 = fig.add_subplot(gs[1, 1], sharey=ax10)
+        axs = np.array([[ax00, ax01],
+                        [ax10, ax11]])
+    
+        axs[0, 1].axis('off')
+        # axs[1, 0].get_shared_x_axes().join(axs[1, 0], axs[0, 0])
+
+        ###
+        #   adsorption isotherm
+        ###
+        axs[1, 0].set_xlabel("$p / [p_0(T)]$")
+        axs[1, 0].set_ylabel("water adsorption")
+
+        colormap = mpl.colormaps['coolwarm'] # or 'plasma', 'coolwarm', etc.
+        norm = colors.Normalize(vmin=10.0, vmax=60.0)
+
+        for T in np.linspace(10, 60, 4):
+            axs[1, 0].plot(
+                p_over_p0s, 
+                [opt_wai.water_ads(T, p_over_p0) for p_over_p0 in p_over_p0s],
+                color=colormap(norm(T))
+            )
+
+        sm = plt.cm.ScalarMappable(cmap=colormap, norm=norm)
+        # sm.set_array([]) # Required for matplotlib versions < 3.4
+        cb_ax = axs[1, 0].inset_axes(
+            [0.5, 0.1, 0.2, 0.6]
+        )
+        cb_ax.axis("off")
+        plt.colorbar(
+            sm, ax=cb_ax, label='temperature [°C]', 
+            # orientation="horizontal"
+        )
+        axs[1, 0].set_xlim(0, 1)
+        axs[1, 0].set_ylim(0, 1)
+
+        ###
+        #   P/P0 distns
+        ###
+        p_over_p0_bins = np.linspace(0, 1, 25)
+        axs[0, 0].hist(
+            weather.ads_des_conditions["ads P/P0"], alpha=0.25, label="ads",
+            bins=p_over_p0_bins
+        )
+        axs[0, 0].hist(
+            weather.ads_des_conditions["des P/P0"], alpha=0.25, label="des", 
+            bins=p_over_p0_bins
+        )
+        axs[0, 0].set_ylabel("# days")
+        axs[0, 0].legend()
+
+        ###
+        #   working cap dist'n
+        ###
+        fitness = score_fitness(opt_wai, weather)
+    
+        axs[1, 1].hist(
+            opt_wai.water_del(weather.ads_des_conditions),
+            orientation='horizontal', color="C4"
+        )
+        axs[1, 1].axhline(fitness, color="black", linestyle="--")
+        axs[1, 1].set_xlabel("# days")
+        axs[1, 1].set_ylabel("water delivery")
+    
+        plt.tight_layout()
+
+        plt.show()
+    return (draw_opt,)
+
+
+@app.cell
+def _(draw_opt, opt_wai, weather):
+    draw_opt(opt_wai, weather)
     return
 
 
@@ -677,6 +792,12 @@ def _(mo):
 
     engineer for the average conditions
     """)
+    return
+
+
+@app.cell
+def _(weather):
+    weather.ads_des_conditions.mean()
     return
 
 
