@@ -106,7 +106,7 @@ def _(math):
 @app.cell
 def _(bern_poly, colors, mpl, np, plt):
     class WaterAdsorptionIsotherm:
-        def __init__(self, n, Tref=25.0):
+        def __init__(self, n, Tref=25.0, method="rand_step"):
             # number of control points
             self.n = n
 
@@ -114,10 +114,19 @@ def _(bern_poly, colors, mpl, np, plt):
             self.Tref = Tref
 
             # weights on Bernstein polynomials
-            self.bs = np.sort(np.random.rand(n+1))
+            if method == "uniform":
+                self.bs = np.sort(np.random.rand(n+1))
+            elif method == "rand_step":
+                self.bs = np.zeros(n+1)
+                i = np.random.choice(n)
+                self.bs[i:] = 1.0
+            else:
+                raise Exception("method not implemented.")
+
+            # no matter what
             self.bs[0] = 0.0 # start at zero
             self.bs[-1] = 1.0 # end at 1
-
+        
         def water_ads(self, T, p_over_p0):
             # p/p0 at Tref that gives same Polanyi potential
             p_over_p0_ref = p_over_p0 ** ((T + 273.15) /  (self.Tref + 273.15))
@@ -181,7 +190,7 @@ def _(weather):
 
 @app.cell
 def _(WaterAdsorptionIsotherm):
-    wai = WaterAdsorptionIsotherm(12)
+    wai = WaterAdsorptionIsotherm(25)
     wai.draw()
     return (wai,)
 
@@ -223,9 +232,9 @@ def _(
 ):
     class Weather:
         def __init__(
-            self, month, year, location, time_to_hour={'day': 15, 'night': 5}
+            self, months, year, location, time_to_hour={'day': 15, 'night': 5}
         ):
-            self.month = month
+            self.months = months
             self.year = year
             self.location = location
 
@@ -294,7 +303,7 @@ def _(
 
             # filter by month
             self.raw_data = self.raw_data.loc[
-                self.raw_data["datetime"].dt.month == self.month
+                [m in self.months for m in self.raw_data["datetime"].dt.month]
             ]
 
             self._infer_surface_RH()
@@ -448,13 +457,19 @@ def _(
 
 @app.cell
 def _(weather):
+    weather.raw
+    return
+
+
+@app.cell
+def _(weather):
     weather.raw_data.loc[weather.raw_data["datetime"].dt.month == 5]
     return
 
 
 @app.cell
 def _(Weather):
-    weather = Weather(5, 2024, "Tucson")
+    weather = Weather([5, 6, 7, 8], 2024, "Tucson")
     weather.raw_data
     return (weather,)
 
@@ -673,8 +688,8 @@ def _(
 
         return fitness_progress, wais, best_individual
 
-    n_generations = 100
-    dim = 20
+    n_generations = 25
+    dim = 25
     fitness_progress, evolved_wais, opt_wai = do_evolution(
         n_generations, pop_size, dim=dim
     )
@@ -764,6 +779,7 @@ def _(colors, mpl, np, plt, score_fitness):
         #   working cap dist'n
         ###
         fitness = score_fitness(opt_wai, weather)
+        plt.title(f"fitness = {fitness:.2f}")
     
         axs[1, 1].hist(
             opt_wai.water_del(weather.ads_des_conditions),
@@ -785,11 +801,10 @@ def _(draw_opt, opt_wai, weather):
     return
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## baseline: a stepped adsorption isotherm
-
     engineer for the average conditions
     """)
     return
@@ -797,7 +812,31 @@ def _(mo):
 
 @app.cell
 def _(weather):
-    weather.ads_des_conditions.mean()
+    avg_conditions = weather.ads_des_conditions.mean()
+    avg_conditions
+    return (avg_conditions,)
+
+
+@app.cell
+def _(avg_conditions):
+    step_loc = (avg_conditions["ads P/P0"] + avg_conditions["des P/P0"]) / 2
+    step_loc
+    return (step_loc,)
+
+
+@app.cell
+def _(step_loc):
+    int(step_loc * 100)
+    return
+
+
+@app.cell
+def _(WaterAdsorptionIsotherm, draw_opt, step_loc, weather):
+    wai_manual = WaterAdsorptionIsotherm(100)
+    wai_manual.bs[:int(step_loc * 100)] = 0.0
+    wai_manual.bs[int(step_loc * 100):] = 1.0
+
+    draw_opt(wai_manual, weather)
     return
 
 
