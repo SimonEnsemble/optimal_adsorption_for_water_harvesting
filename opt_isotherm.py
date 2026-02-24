@@ -99,34 +99,47 @@ def _(mo):
 @app.cell
 def _(math):
     def bern_poly(x, v, n):
-        return math.comb(n, v) * x**v * (1.0 - x)**(n - v)
+        return math.comb(n, v) * x ** v * (1.0 - x) ** (n - v)
     return (bern_poly,)
+
+
+@app.cell
+def _():
+    if None:
+        print("yes")
+    return
 
 
 @app.cell
 def _(bern_poly, colors, mpl, np, plt):
     class WaterAdsorptionIsotherm:
-        def __init__(self, n, Tref=25.0, method="rand_step"):
+        def __init__(self, n, Tref=25.0, method="", n_step=None):
             # number of control points
             self.n = n
 
             # reference temperature [deg. C]
             self.Tref = Tref
-
+            
             # weights on Bernstein polynomials
+            viable_methods = ["uniform", "random step", "manual step"]
             if method == "uniform":
                 self.bs = np.sort(np.random.rand(n+1))
-            elif method == "rand_step":
-                self.bs = np.zeros(n+1)
+            elif method == "random step":
+                self.bs = np.zeros(n + 1)
                 i = np.random.choice(n)
                 self.bs[i:] = 1.0
+            elif method == "manual step" and n_step:
+                self.bs = np.zeros(n + 1)
+                self.bs[n_step:] = 1.0
             else:
-                raise Exception("method not implemented.")
+                raise Exception(
+                    f"method not implemented. choose a viable method: {viable_methods}. if manual step, provide n_step"
+                )
 
             # no matter what
             self.bs[0] = 0.0 # start at zero
             self.bs[-1] = 1.0 # end at 1
-        
+
         def water_ads(self, T, p_over_p0):
             # p/p0 at Tref that gives same Polanyi potential
             p_over_p0_ref = p_over_p0 ** ((T + 273.15) /  (self.Tref + 273.15))
@@ -190,7 +203,7 @@ def _(weather):
 
 @app.cell
 def _(WaterAdsorptionIsotherm):
-    wai = WaterAdsorptionIsotherm(25)
+    wai = WaterAdsorptionIsotherm(25, method="random step")
     wai.draw()
     return (wai,)
 
@@ -457,7 +470,7 @@ def _(
 
 @app.cell
 def _(weather):
-    weather.raw
+    weather.raw_data
     return
 
 
@@ -469,7 +482,7 @@ def _(weather):
 
 @app.cell
 def _(Weather):
-    weather = Weather([5, 6, 7, 8], 2024, "Tucson")
+    weather = Weather([5, 6, 7, 8, 9], 2024, "Tucson")
     weather.raw_data
     return (weather,)
 
@@ -523,7 +536,7 @@ def _(mo):
 
 @app.cell
 def _(np):
-    def score_fitness(wai, weather, alpha=5.0):
+    def score_fitness(wai, weather, alpha=10.0):
         # get dist'n of water dels
         water_dels = wai.water_del(weather.ads_des_conditions)
         # get worst-case water delivery, ignoring alpha % of hard cases.
@@ -560,7 +573,10 @@ def _(mo):
 def _(WaterAdsorptionIsotherm, np, score_fitness, weather):
     pop_size = 50
 
-    wais = [WaterAdsorptionIsotherm(8) for _ in range(pop_size)]
+    wais = [
+        WaterAdsorptionIsotherm(8, method="random step") 
+        for _ in range(pop_size)
+    ]
 
     fitnesses = np.array([score_fitness(wai, weather) for wai in wais])
     return fitnesses, pop_size, wais
@@ -590,7 +606,10 @@ def _(fitnesses, plt):
 
 @app.cell
 def _(WaterAdsorptionIsotherm, np, score_fitness, weather):
-    def evolve(wais, n_elite=5, tourney_size=10, n_rand=5, n_mutate=10, eps=0.05):
+    def evolve(
+        wais, n_elite=5, tourney_size=10, 
+        n_rand=5, n_mutate=10, eps=0.05
+    ):
         # what's the population size?
         pop_size = np.shape(wais)[0]
 
@@ -612,19 +631,19 @@ def _(WaterAdsorptionIsotherm, np, score_fitness, weather):
                 ids_pop, size=tourney_size, replace=False
             )
 
-            # select parents
+            # select parents as the pair with highest fitness
             id_a = ids_tourney[np.argsort(fitnesses[ids_tourney])[-1]]
             id_b = ids_tourney[np.argsort(fitnesses[ids_tourney])[-2]]
 
             # mate
-            wai = WaterAdsorptionIsotherm(dim)
+            wai = WaterAdsorptionIsotherm(dim, method="random step")
             alpha = np.random.rand()
             wai.bs = alpha * wais[id_a].bs + (1 - alpha) * wais[id_b].bs
             new_wais.append(wai)
 
         # random births for exploration
         for i in range(n_rand):
-            new_wais.append(WaterAdsorptionIsotherm(wais[0].n))
+            new_wais.append(WaterAdsorptionIsotherm(dim, method="random step"))
 
         # mutation
         for i in range(n_mutate):
@@ -648,7 +667,9 @@ def _(WaterAdsorptionIsotherm, np, score_fitness, weather):
 @app.cell
 def _(evolve, fitnesses, np, plt, score_fitness, wais, weather):
     new_wais = evolve(wais, n_elite=5)
-    new_fitnesses = np.array([score_fitness(new_wai, weather) for new_wai in new_wais])
+    new_fitnesses = np.array(
+        [score_fitness(new_wai, weather) for new_wai in new_wais]
+    )
 
     plt.figure()
     plt.xlabel("fitness")
@@ -671,7 +692,10 @@ def _(
 ):
     def do_evolution(n_generations, pop_size, dim=15):
         # generate population
-        wais = [WaterAdsorptionIsotherm(dim) for _ in range(pop_size)]
+        wais = [
+            WaterAdsorptionIsotherm(dim, method="random step") 
+            for _ in range(pop_size)
+        ]
 
         # fitness
         fitnesses = np.array([score_fitness(wai, weather) for wai in wais])
@@ -727,7 +751,7 @@ def _(colors, mpl, np, plt, score_fitness):
         ax11 = fig.add_subplot(gs[1, 1], sharey=ax10)
         axs = np.array([[ax00, ax01],
                         [ax10, ax11]])
-    
+
         axs[0, 1].axis('off')
         # axs[1, 0].get_shared_x_axes().join(axs[1, 0], axs[0, 0])
 
@@ -780,7 +804,7 @@ def _(colors, mpl, np, plt, score_fitness):
         ###
         fitness = score_fitness(opt_wai, weather)
         plt.title(f"fitness = {fitness:.2f}")
-    
+
         axs[1, 1].hist(
             opt_wai.water_del(weather.ads_des_conditions),
             orientation='horizontal', color="C4"
@@ -788,7 +812,7 @@ def _(colors, mpl, np, plt, score_fitness):
         axs[1, 1].axhline(fitness, color="black", linestyle="--")
         axs[1, 1].set_xlabel("# days")
         axs[1, 1].set_ylabel("water delivery")
-    
+
         plt.tight_layout()
 
         plt.show()
@@ -819,24 +843,40 @@ def _(weather):
 
 @app.cell
 def _(avg_conditions):
-    step_loc = (avg_conditions["ads P/P0"] + avg_conditions["des P/P0"]) / 2
-    step_loc
-    return (step_loc,)
+    p_p0_step = (avg_conditions["ads P/P0"] + avg_conditions["des P/P0"]) / 2
+    p_p0_step
+    return (p_p0_step,)
 
 
 @app.cell
-def _(step_loc):
-    int(step_loc * 100)
+def _(p_p0_step):
+    p_p0_step * 100
     return
 
 
 @app.cell
-def _(WaterAdsorptionIsotherm, draw_opt, step_loc, weather):
-    wai_manual = WaterAdsorptionIsotherm(100)
-    wai_manual.bs[:int(step_loc * 100)] = 0.0
-    wai_manual.bs[int(step_loc * 100):] = 1.0
+def _(WaterAdsorptionIsotherm, draw_opt, p_p0_step, weather):
+    wai_manual = WaterAdsorptionIsotherm(
+        100, method="manual step", n_step=int(p_p0_step * 100)
+    )
 
     draw_opt(wai_manual, weather)
+    return
+
+
+@app.cell
+def _(WaterAdsorptionIsotherm, draw_opt, np, score_fitness, weather):
+    n_grid = 200
+    wai_all_steps = [
+        WaterAdsorptionIsotherm(n_grid, method="manual step", n_step=n_step) 
+            for n_step in np.arange(2, n_grid-2)
+    ]
+    baseline_fitnesses = np.array(
+        [score_fitness(wai, weather) for wai in wai_all_steps]
+    )
+    id_opt_baseline = np.argmax(baseline_fitnesses)
+
+    draw_opt(wai_all_steps[id_opt_baseline], weather)
     return
 
 
