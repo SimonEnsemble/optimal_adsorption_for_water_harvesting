@@ -26,7 +26,6 @@ def _():
     return (
         colors,
         math,
-        mdates,
         mo,
         mpl,
         my_date_format,
@@ -74,6 +73,12 @@ def _(np, warnings):
 
 
 @app.cell
+def _(water_vapor_presssure):
+    water_vapor_presssure(100.0) # around 1 ATM
+    return
+
+
+@app.cell
 def _(np, plt, water_vapor_presssure):
     def viz_water_vapor_presssure():
         Ts = np.linspace(273, 343, 100) - 273.15 # deg C
@@ -104,44 +109,45 @@ def _(math):
 
 
 @app.cell
-def _():
-    if None:
-        print("yes")
-    return
-
-
-@app.cell
 def _(bern_poly, colors, mpl, np, plt):
     class WaterAdsorptionIsotherm:
-        def __init__(self, n, Tref=25.0, method="", n_step=None):
+        def __init__(self, n, Tref=25.0):
             # number of control points
             self.n = n
 
             # reference temperature [deg. C]
             self.Tref = Tref
-            
-            # weights on Bernstein polynomials
-            viable_methods = ["uniform", "random step", "manual step"]
-            if method == "uniform":
-                self.bs = np.sort(np.random.rand(n+1))
-            elif method == "random step":
-                self.bs = np.zeros(n + 1)
-                i = np.random.choice(n)
-                self.bs[i:] = 1.0
-            elif method == "manual step" and n_step:
-                self.bs = np.zeros(n + 1)
-                self.bs[n_step:] = 1.0
-            else:
-                raise Exception(
-                    f"method not implemented. choose a viable method: {viable_methods}. if manual step, provide n_step"
-                )
 
-            # no matter what
-            self.bs[0] = 0.0 # start at zero
+            # pre-allocate bs
+            self.bs = np.full(n + 1, np.nan)
+
+        def endow_random_isotherm(self):
+            self.bs = np.sort(np.random.rand(self.n+1))
+            self.bs[0]  = 0.0 # start at zero
             self.bs[-1] = 1.0 # end at 1
 
+        def endow_stepped_isotherm(self, i):
+            self.bs[:i] = 0.0
+            self.bs[i:] = 1.0
+
+        def endow_random_stepped_isotherm(self):
+            i = np.random.choice(self.n)
+            self.endow_stepped_isotherm(i)    
+
         def water_ads(self, T, p_over_p0):
-            # p/p0 at Tref that gives same Polanyi potential
+            """
+            water adsorption in this MOF
+            - T: deg C
+            - p/p0(T) : unitless
+            """
+            # model: expand adsorption n as a function of phi_ref = p / p0[T_ref]
+            #        with Bernstein polynomial basis functions.
+            # Polanyi: A = - R T log(p / p0[T])
+            #          n = n(A)
+            # set - RT log(phi) = - R T_ref log(phi_ref)
+            #     cuz we wanna know corresponding phi_ref at T_ref that gives same A
+            #        T / T_Ref log(phi) = log(phi_ref)
+            #        log(phi^(T/T_Ref)) = log(phi_ref)
             p_over_p0_ref = p_over_p0 ** ((T + 273.15) /  (self.Tref + 273.15))
 
             a = 0.0
@@ -149,20 +155,17 @@ def _(bern_poly, colors, mpl, np, plt):
                 a += self.bs[v] * bern_poly(p_over_p0_ref, v, self.n)
             return a
 
-        def water_del(self, ads_des_conditions):
-            w_ads = self.water_ads(
-                ads_des_conditions["ads T [°C]"], ads_des_conditions["ads P/P0"]
-            )
-            w_des = self.water_ads(
-                ads_des_conditions["des T [°C]"], ads_des_conditions["des P/P0"]
-            )
+        def water_del(self, conditions):
+            w_ads = self.water_ads(conditions["ads T [°C]"], conditions["ads P/P0"])
+            w_des = self.water_ads(conditions["des T [°C]"], conditions["des P/P0"])
             w_del = w_ads - w_des
-            w_del = np.maximum(0, w_del.values) # can't be negative
-            return w_del
+            return np.maximum(0, w_del.values) # can't be negative
 
         def water_del_distn(self, weather):
+            w_dels = self.water_del(weather.ads_des_conditions)
+        
             plt.figure()
-            plt.hist(self.water_del(weather.ads_des_conditions))
+            plt.hist(w_dels)
             plt.ylabel("# days")
             plt.xlabel("water delivery")
             plt.show()
@@ -186,7 +189,6 @@ def _(bern_poly, colors, mpl, np, plt):
                 )
 
             sm = plt.cm.ScalarMappable(cmap=colormap, norm=norm)
-            # sm.set_array([]) # Required for matplotlib versions < 3.4
             plt.colorbar(sm, ax=plt.gca(), label='temperature [°C]')
             plt.xlim(0, 1)
             plt.ylim(0, 1)
@@ -203,7 +205,8 @@ def _(weather):
 
 @app.cell
 def _(WaterAdsorptionIsotherm):
-    wai = WaterAdsorptionIsotherm(25, method="random step")
+    wai = WaterAdsorptionIsotherm(10)
+    wai.endow_stepped_isotherm(10)
     wai.draw()
     return (wai,)
 
@@ -212,13 +215,23 @@ def _(WaterAdsorptionIsotherm):
 def _(mo):
     mo.md(r"""
     # data on capture and release conditions
+
+    NOAA hourly data [here](https://www.ncei.noaa.gov/access/crn/products.html).
+
+    no need to pre-process now.
     """)
     return
 
 
 @app.cell
 def _():
-    city_to_state = {'Tucson': 'AZ', 'Socorro': 'NM'}
+    city_to_state = {
+        'Tucson': 'AZ', 
+        'Socorro': 'NM', 
+        'Utqiagvik': 'AK', 
+        'Mercury': 'NV', 
+        'Stovepipe': 'CA'
+    }
     return (city_to_state,)
 
 
@@ -231,10 +244,20 @@ def _():
 
 
 @app.cell
+def _(pd):
+    pd.read_csv(
+                "data/CRNH0203-2025-AK_Utqiagvik_formerly_Barrow_4_ENE.txt",
+                names=open("data/headers.txt", "r").readlines()[1].split(), 
+                dtype={'LST_DATE': str}, 
+                sep='\s+'
+            )
+    return
+
+
+@app.cell
 def _(
     city_to_state,
     fig_dir,
-    mdates,
     my_date_format,
     np,
     os,
@@ -253,7 +276,7 @@ def _(
 
             print(f"reading {year} {location} weather.")
             print("\tnighttime adsorption hr: ", time_to_hour["night"])
-            print("\tdaytime harvest hr: ", time_to_hour["day"])
+            print("\tdaytime harvest hr: ",      time_to_hour["day"])
 
             self.relevant_weather_cols = [
                 "T_HR_AVG", "RH_HR_AVG", "SUR_TEMP", "SUR_RH_HR_AVG"
@@ -270,10 +293,7 @@ def _(
             self._gen_ads_des_conditions()
 
             # for plots
-            # _start_date = self.ads_des_conditions["date"].min().strftime(my_date_format_str)# .date()
-            # _end_data = self.ads_des_conditions["date"].max().strftime(my_date_format_str)# .date()
             self.loc_title = f"{self.location}, {city_to_state[self.location]}."
-            # self.loc_timespan_title = f"{self.loc_title} {_start_date} to {_end_data}."
 
         def _read_raw_weather_data(self):
             wdata_dir = "data/"
@@ -290,20 +310,25 @@ def _(
             filename = filename[0]
             print(f"\t...reading weather data from {filename}")
 
-            col_names = open(wdata_dir + "/headers.txt", "r").readlines()[1].split()
-
-            raw_data = pd.read_csv(
-                wdata_dir + "/" + filename, sep=",", names=col_names, 
-                dtype={'LST_DATE': str}
+            self.raw_data = pd.read_csv(
+                wdata_dir + "/" + filename,
+                names=open(wdata_dir + "/headers.txt", "r").readlines()[1].split(), 
+                dtype={'LST_DATE': str}, 
+                sep='\s+'
             )
+        
+            self._remove_rainy_days()
 
-            self.raw_data = raw_data
+        def _remove_rainy_days(self):
+            print("removing rainy days")
+            ids = self.raw_data.groupby("LST_DATE")["P_CALC"].transform("sum") == 0.0
+            self.raw_data = self.raw_data[ids]
 
         def _process_datetime_and_filter(self):
             # convert to pandas datetime
             self.raw_data["date"] = pd.to_datetime(self.raw_data["LST_DATE"])
 
-            # keep only self.month of 2024
+            # keep only the desired year
             self.raw_data = self.raw_data[
                 self.raw_data["date"].dt.year == self.year
             ] # keep only 2024
@@ -323,6 +348,12 @@ def _(
 
         def _infer_surface_RH(self):
             # compute new relative humidity at surface temperature, for heated air
+            # partial pressure @ ambient:
+            #      RH * p0(T)
+            #         =
+            # partial pressure @ surface:
+            #   SUR_RH * p0(SUR_T)
+            # sooo SUR_RH = RH * p0(T) / p0(SUR_T)
             self.raw_data["SUR_RH_HR_AVG"] = self.raw_data.apply(
                 lambda day: day["RH_HR_AVG"] * water_vapor_presssure(day["T_HR_AVG"]) / \
                         water_vapor_presssure(day["SUR_TEMP"]), axis=1
@@ -337,9 +368,9 @@ def _(
                     ax.grid(False)
             plt.xticks(rotation=90, ha='center')
             n_days = len(self.wdata["night"]["datetime"])
-            axs[1].xaxis.set_major_locator(
-                mdates.AutoDateLocator(minticks=n_days-1, maxticks=n_days+1)
-            )
+            # axs[1].xaxis.set_major_locator(
+            #     mdates.AutoDateLocator(minticks=n_days-1, maxticks=n_days+1)
+            # )
 
             if not toy:
                 axs[0].set_title(self.loc_title)
@@ -368,7 +399,7 @@ def _(
                 s=200 if toy else 100 
             ) # daytime surface temperature
             # axs[0].set_title(self.location)
-            axs[0].set_ylim(10, 65)
+            axs[0].set_ylim(-5, 75)
             axs[0].set_yticks([10 * _i for _i in range(1, 7)])
             axs[0].set_xlim(self.raw_data["datetime"].min(), self.raw_data["datetime"].max())
 
@@ -469,21 +500,15 @@ def _(
 
 
 @app.cell
-def _(weather):
-    weather.raw_data
-    return
-
-
-@app.cell
-def _(weather):
-    weather.raw_data.loc[weather.raw_data["datetime"].dt.month == 5]
-    return
-
-
-@app.cell
 def _(Weather):
-    weather = Weather([5, 6, 7, 8, 9], 2024, "Tucson")
-    weather.raw_data
+    weather = Weather([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], 2025, "Mercury")
+    weather = Weather([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], 2025, "Stovepipe")
+
+    # weather = Weather([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], 2025, "Utqiagvik")
+
+    # weather = Weather([6, 7, 8], 2025, "Utqiagvik")
+    weather.ads_des_conditions
+    # weather.raw_data
     return (weather,)
 
 
@@ -509,7 +534,7 @@ def _(sns, weather):
     pp.axes[3, 1].set_xlim(0, 1)
     pp.axes[3, 3].set_xlim(0, 1)
 
-    T_range = [0, 65]
+    T_range = [0, 75]
     assert T_range[1] > weather.ads_des_conditions[["ads T [°C]", "des T [°C]"]].max().max()
     assert T_range[0] < weather.ads_des_conditions[["ads T [°C]", "des T [°C]"]].min().min()
 
@@ -521,8 +546,8 @@ def _(sns, weather):
 
 
 @app.cell
-def _(weather):
-    weather.viz_timeseries()
+def _(eweather):
+    eweather.viz_timeseries()
     return
 
 
@@ -536,7 +561,7 @@ def _(mo):
 
 @app.cell
 def _(np):
-    def score_fitness(wai, weather, alpha=10.0):
+    def score_fitness(wai, weather, alpha=20.0):
         # get dist'n of water dels
         water_dels = wai.water_del(weather.ads_des_conditions)
         # get worst-case water delivery, ignoring alpha % of hard cases.
@@ -547,6 +572,7 @@ def _(np):
 @app.cell
 def _(score_fitness, wai, weather):
     fitness = score_fitness(wai, weather)
+    fitness
     return (fitness,)
 
 
@@ -571,27 +597,17 @@ def _(mo):
 
 @app.cell
 def _(WaterAdsorptionIsotherm, np, score_fitness, weather):
-    pop_size = 50
+    pop_size = 75
 
     wais = [
-        WaterAdsorptionIsotherm(8, method="random step") 
+        WaterAdsorptionIsotherm(8)
         for _ in range(pop_size)
     ]
+    for _wai in wais:
+        _wai.endow_random_stepped_isotherm()
 
     fitnesses = np.array([score_fitness(wai, weather) for wai in wais])
     return fitnesses, pop_size, wais
-
-
-@app.cell
-def _(fitnesses, np):
-    fitnesses[np.argsort(fitnesses)[-5:]]
-    return
-
-
-@app.cell
-def _(fitnesses, np):
-    np.argsort(fitnesses)[-5:]
-    return
 
 
 @app.cell
@@ -608,7 +624,7 @@ def _(fitnesses, plt):
 def _(WaterAdsorptionIsotherm, np, score_fitness, weather):
     def evolve(
         wais, n_elite=5, tourney_size=10, 
-        n_rand=5, n_mutate=10, eps=0.05
+        n_rand=10, n_mutate=15, eps=0.05
     ):
         # what's the population size?
         pop_size = np.shape(wais)[0]
@@ -636,14 +652,16 @@ def _(WaterAdsorptionIsotherm, np, score_fitness, weather):
             id_b = ids_tourney[np.argsort(fitnesses[ids_tourney])[-2]]
 
             # mate
-            wai = WaterAdsorptionIsotherm(dim, method="random step")
+            wai = WaterAdsorptionIsotherm(dim)
             alpha = np.random.rand()
             wai.bs = alpha * wais[id_a].bs + (1 - alpha) * wais[id_b].bs
             new_wais.append(wai)
 
         # random births for exploration
         for i in range(n_rand):
-            new_wais.append(WaterAdsorptionIsotherm(dim, method="random step"))
+            wai = WaterAdsorptionIsotherm(dim)
+            wai.endow_random_stepped_isotherm()
+            new_wais.append(wai)
 
         # mutation
         for i in range(n_mutate):
@@ -675,9 +693,17 @@ def _(evolve, fitnesses, np, plt, score_fitness, wais, weather):
     plt.xlabel("fitness")
     plt.ylabel("# soln's")
     plt.hist(fitnesses, alpha=0.5)
-    plt.hist(new_fitnesses, alpha=0.5)
+    plt.hist(new_fitnesses, alpha=0.5, label="new")
+    plt.legend()
     plt.show()
     return
+
+
+@app.cell
+def _(mo):
+    run_evol_cbox = mo.ui.checkbox(label="run evolution algo")
+    run_evol_cbox
+    return (run_evol_cbox,)
 
 
 @app.cell
@@ -687,15 +713,15 @@ def _(
     np,
     plt,
     pop_size,
+    run_evol_cbox,
     score_fitness,
     weather,
 ):
     def do_evolution(n_generations, pop_size, dim=15):
         # generate population
-        wais = [
-            WaterAdsorptionIsotherm(dim, method="random step") 
-            for _ in range(pop_size)
-        ]
+        wais = [WaterAdsorptionIsotherm(dim) for _ in range(pop_size)]
+        for wai in wais:
+            wai.endow_random_stepped_isotherm()
 
         # fitness
         fitnesses = np.array([score_fitness(wai, weather) for wai in wais])
@@ -712,17 +738,18 @@ def _(
 
         return fitness_progress, wais, best_individual
 
-    n_generations = 25
-    dim = 25
-    fitness_progress, evolved_wais, opt_wai = do_evolution(
-        n_generations, pop_size, dim=dim
-    )
+    if run_evol_cbox.value:
+        n_generations = 50
+        dim = 25
+        fitness_progress, evolved_wais, opt_wai = do_evolution(
+            n_generations, pop_size, dim=dim
+        )
 
-    plt.figure()
-    plt.plot(range(np.size(fitness_progress)), fitness_progress)
-    plt.xlabel("iteration")
-    plt.ylabel("fitness")
-    plt.show()
+        plt.figure()
+        plt.plot(range(np.size(fitness_progress)), fitness_progress)
+        plt.xlabel("iteration")
+        plt.ylabel("fitness")
+        plt.show()
     return (opt_wai,)
 
 
@@ -797,6 +824,7 @@ def _(colors, mpl, np, plt, score_fitness):
             bins=p_over_p0_bins
         )
         axs[0, 0].set_ylabel("# days")
+        axs[0, 0].set_ylim(0, 200)
         axs[0, 0].legend()
 
         ###
@@ -811,6 +839,7 @@ def _(colors, mpl, np, plt, score_fitness):
         )
         axs[1, 1].axhline(fitness, color="black", linestyle="--")
         axs[1, 1].set_xlabel("# days")
+        axs[1, 1].set_xlim(0, 200)
         axs[1, 1].set_ylabel("water delivery")
 
         plt.tight_layout()
@@ -829,53 +858,27 @@ def _(draw_opt, opt_wai, weather):
 def _(mo):
     mo.md(r"""
     ## baseline: a stepped adsorption isotherm
-    engineer for the average conditions
+    search for best stepped adsorption isotherm
     """)
     return
 
 
 @app.cell
-def _(weather):
-    avg_conditions = weather.ads_des_conditions.mean()
-    avg_conditions
-    return (avg_conditions,)
-
-
-@app.cell
-def _(avg_conditions):
-    p_p0_step = (avg_conditions["ads P/P0"] + avg_conditions["des P/P0"]) / 2
-    p_p0_step
-    return (p_p0_step,)
-
-
-@app.cell
-def _(p_p0_step):
-    p_p0_step * 100
-    return
-
-
-@app.cell
-def _(WaterAdsorptionIsotherm, draw_opt, p_p0_step, weather):
-    wai_manual = WaterAdsorptionIsotherm(
-        100, method="manual step", n_step=int(p_p0_step * 100)
-    )
-
-    draw_opt(wai_manual, weather)
-    return
-
-
-@app.cell
-def _(WaterAdsorptionIsotherm, draw_opt, np, score_fitness, weather):
-    n_grid = 200
-    wai_all_steps = [
-        WaterAdsorptionIsotherm(n_grid, method="manual step", n_step=n_step) 
-            for n_step in np.arange(2, n_grid-2)
-    ]
+def _(WaterAdsorptionIsotherm, np, score_fitness, weather):
+    n_grid = 100
+    wai_all_steps = [WaterAdsorptionIsotherm(n_grid) for i in range(n_grid)]
+    for n_step in np.arange(n_grid):
+        wai_all_steps[n_step].endow_stepped_isotherm(n_step)
+    
     baseline_fitnesses = np.array(
         [score_fitness(wai, weather) for wai in wai_all_steps]
     )
     id_opt_baseline = np.argmax(baseline_fitnesses)
+    return id_opt_baseline, wai_all_steps
 
+
+@app.cell
+def _(draw_opt, id_opt_baseline, wai_all_steps, weather):
     draw_opt(wai_all_steps[id_opt_baseline], weather)
     return
 
