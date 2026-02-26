@@ -1,6 +1,6 @@
 import marimo
 
-__generated_with = "0.15.5"
+__generated_with = "0.20.2"
 app = marimo.App()
 
 
@@ -45,7 +45,9 @@ def _(os):
 
 @app.cell(hide_code=True)
 def _(mo):
-    mo.md(r"""# modeling the vapor pressure of water""")
+    mo.md(r"""
+    # modeling the vapor pressure of water
+    """)
     return
 
 
@@ -112,7 +114,9 @@ def _(np, plt):
 
 @app.cell(hide_code=True)
 def _(mo):
-    mo.md(r"""# modeling a water adsorption isotherm in a MOF bed""")
+    mo.md(r"""
+    # modeling a water adsorption isotherm in a MOF bed
+    """)
     return
 
 
@@ -120,6 +124,7 @@ def _(mo):
 def _(math):
     def bern_poly(x, v, n):
         return math.comb(n, v) * x ** v * (1.0 - x) ** (n - v)
+
     return (bern_poly,)
 
 
@@ -209,6 +214,7 @@ def _(bern_poly, colors, mpl, np, plt):
             plt.ylim(0, 1)
 
             plt.show()
+
     return (WaterAdsorptionIsotherm,)
 
 
@@ -231,15 +237,13 @@ def _(WaterAdsorptionIsotherm, fig_dir, plt):
 
 @app.cell(hide_code=True)
 def _(mo):
-    mo.md(
-        r"""
+    mo.md(r"""
     # data on capture and release conditions
 
     NOAA hourly data [here](https://www.ncei.noaa.gov/access/crn/products.html).
 
     no need to pre-process now.
-    """
-    )
+    """)
     return
 
 
@@ -297,6 +301,7 @@ def _(city_to_state, fig_dir, my_date_format, np, os, pd, plt, time_to_color):
 
             # for plots
             self.loc_title = f"{self.location}, {city_to_state[self.location]}."
+            self.save_tag = fig_dir + f"/{self.location}_"
 
         def _read_raw_weather_data(self):
             wdata_dir = "data/"
@@ -440,7 +445,7 @@ def _(city_to_state, fig_dir, my_date_format, np, os, pd, plt, time_to_color):
 
             # already got legend above
             if save:
-                plt.savefig(fig_dir + f"/weather_{self.loc_title}.pdf", format="pdf", bbox_inches="tight")
+                plt.savefig(self.save_tag + "weather_timeseries.pdf", format="pdf", bbox_inches="tight")
 
             plt.show()
 
@@ -499,6 +504,7 @@ def _(city_to_state, fig_dir, my_date_format, np, os, pd, plt, time_to_color):
                   np.sum(self.raw_data["T_HR_AVG"] < -999.0)
             )
             self.raw_data = self.raw_data[self.raw_data["T_HR_AVG"] > -999.0]
+
     return (Weather,)
 
 
@@ -519,47 +525,48 @@ def _(Weather):
 
 
 @app.cell
-def _(fig_dir, np, plt, sns, weather):
-    pp = sns.pairplot(
-        weather.ads_des_conditions[1:].rename(
-            columns={
-                'ads T [°C]': 'capture $T$ [°C]',
-                'des T [°C]': 'release $T$ [°C]',
-                'ads P/P0': 'capture $p/p_0$',
-                'des P/P0': 'release $p/p_0$',
-            }
-        ), 
-        corner=True,
-        plot_kws=dict(marker="+", linewidth=1),
-        diag_kws=dict(fill=False),
-        diag_kind='kde'
-    )
-    pp.axes[1, 1].set_ylim(0, 1)
-    pp.axes[1, 1].set_yticks(np.linspace(0, 1, 6))
-    pp.axes[3, 1].set_ylim(0, 1)
-    pp.axes[3, 1].set_yticks(np.linspace(0, 1, 6))
-    pp.axes[3, 1].set_xlim(0, 1)
-    pp.axes[3, 1].set_xticks(np.linspace(0, 1, 6))
-    pp.axes[3, 3].set_xlim(0, 1)
-    pp.axes[3, 3].set_xticks(np.linspace(0, 1, 6))
-
-    T_range = [-10, 75]
-    assert T_range[1] > weather.ads_des_conditions[["ads T [°C]", "des T [°C]"]].max().max()
-    assert T_range[0] < weather.ads_des_conditions[["ads T [°C]", "des T [°C]"]].min().min()
-
-    T_ticks = [-10 + 20*i for i in range(5)]
-
-    pp.axes[0, 0].set_xlim(T_range[0], T_range[1])
-    pp.axes[0, 0].set_xticks(T_ticks)
-    pp.axes[3, 2].set_xlim(T_range[0], T_range[1])
-    pp.axes[3, 2].set_xticks(T_ticks)
-    pp.axes[2, 0].set_ylim(T_range[0], T_range[1])
-    pp.axes[2, 0].set_yticks(T_ticks)
-    plt.tight_layout()
-    plt.savefig(
-        fig_dir + f"/{weather.loc_title}ads_des_conditions.pdf", 
-        format="pdf"
-    )
+def _(np, plt, sns, weather):
+    with sns.plotting_context("notebook", font_scale=1.5):
+        pp = sns.pairplot(
+            weather.ads_des_conditions[1:].rename(
+                columns={
+                    'ads T [°C]': 'capture $T$ [°C]',
+                    'des T [°C]': 'release $T$ [°C]',
+                    'ads P/P0': 'capture $p/p_0$',
+                    'des P/P0': 'release $p/p_0$',
+                }
+            ), 
+            corner=True,
+            plot_kws=dict(marker="+", linewidth=1),
+            diag_kws=dict(fill=False),
+            diag_kind='kde'
+        )
+        pp.axes[1, 1].set_ylim(0, 1)
+        pp.axes[1, 1].set_yticks(np.linspace(0, 1, 6))
+        pp.axes[3, 1].set_ylim(0, 1)
+        pp.axes[3, 1].set_yticks(np.linspace(0, 1, 6))
+        pp.axes[3, 1].set_xlim(0, 1)
+        pp.axes[3, 1].set_xticks(np.linspace(0, 1, 6))
+        pp.axes[3, 3].set_xlim(0, 1)
+        pp.axes[3, 3].set_xticks(np.linspace(0, 1, 6))
+    
+        T_range = [-10, 75]
+        assert T_range[1] > weather.ads_des_conditions[["ads T [°C]", "des T [°C]"]].max().max()
+        assert T_range[0] < weather.ads_des_conditions[["ads T [°C]", "des T [°C]"]].min().min()
+    
+        T_ticks = [-10 + 20*i for i in range(5)]
+    
+        pp.axes[0, 0].set_xlim(T_range[0], T_range[1])
+        pp.axes[0, 0].set_xticks(T_ticks)
+        pp.axes[3, 2].set_xlim(T_range[0], T_range[1])
+        pp.axes[3, 2].set_xticks(T_ticks)
+        pp.axes[2, 0].set_ylim(T_range[0], T_range[1])
+        pp.axes[2, 0].set_yticks(T_ticks)
+        plt.tight_layout()
+        plt.savefig(
+            weather.save_tag + "ads_des_conditions.pdf", 
+            format="pdf"
+        )
     pp
     return
 
@@ -572,7 +579,9 @@ def _(weather):
 
 @app.cell(hide_code=True)
 def _(mo):
-    mo.md(r"""## dist'n of water deliveries""")
+    mo.md(r"""
+    ## dist'n of water deliveries
+    """)
     return
 
 
@@ -584,6 +593,7 @@ def _(np):
         water_dels = wai.water_del(weather.ads_des_conditions)
         # get worst-case water delivery, ignoring alpha % of hard cases.
         return np.percentile(water_dels, alpha)
+
     return (score_fitness,)
 
 
@@ -595,7 +605,7 @@ def _(score_fitness, wai, weather):
 
 
 @app.cell
-def _(fig_dir, fitness, plt, wai, weather):
+def _(fitness, plt, wai, weather):
     plt.figure()
     plt.hist(wai.water_del(weather.ads_des_conditions))
     plt.axvline(fitness, color="C1", label=f"10% VAR")
@@ -604,7 +614,7 @@ def _(fig_dir, fitness, plt, wai, weather):
     plt.legend()
     plt.xlabel("water delivery")
     plt.tight_layout()
-    plt.savefig(fig_dir + f"/{weather.loc_title}_eg_var.pdf", format="pdf")
+    plt.savefig(weather.save_tag + "eg_var.pdf", format="pdf")
     plt.show()
     plt.show()
     return
@@ -612,7 +622,9 @@ def _(fig_dir, fitness, plt, wai, weather):
 
 @app.cell(hide_code=True)
 def _(mo):
-    mo.md(r"""## evolutionary optimization""")
+    mo.md(r"""
+    ## evolutionary optimization
+    """)
     return
 
 
@@ -681,6 +693,7 @@ def _(WaterAdsorptionIsotherm, np, score_fitness, weather):
             new_wais[id].bs[new_wais[id].bs > 1.0] = 1.0
 
         return new_wais
+
     return (evolve,)
 
 
@@ -694,6 +707,7 @@ def _(WaterAdsorptionIsotherm, np):
             else:
                 wai.endow_random_isotherm()
         return wais
+
     return (gen_initial_pop,)
 
 
@@ -763,20 +777,20 @@ def _(evolve, gen_initial_pop, np, run_evol_cbox, score_fitness, weather):
 
 
 @app.cell
-def _(fig_dir, fitnesses_gen, plt, sns, weather):
+def _(fitnesses_gen, plt, sns, weather):
     sns.stripplot(fitnesses_gen, color="C2", palette="crest")
     plt.xlabel("generation")
     plt.ylabel("fitness score")
     plt.tight_layout()
     plt.savefig(
-        fig_dir + f"/{weather.loc_title}fitness_progress.pdf", format="pdf"
+        weather.save_tag + "fitness_progress.pdf", format="pdf"
     )
     plt.show()
     return
 
 
 @app.cell
-def _(best_wai_gen, colors, fig_dir, mpl, np, plt, weather):
+def _(best_wai_gen, colors, mpl, np, plt, weather):
     def viz_best_wais(best_wai_gen):
         p_over_p0s = np.linspace(0, 1, 150)
         Tref = best_wai_gen[0].Tref
@@ -809,7 +823,7 @@ def _(best_wai_gen, colors, fig_dir, mpl, np, plt, weather):
 
         plt.tight_layout()
         plt.savefig(
-            fig_dir + f"/{weather.loc_title}wai_progress.pdf", format="pdf"
+            weather.save_tag + "wai_progress.pdf", format="pdf"
         )
         plt.show()
 
@@ -818,18 +832,18 @@ def _(best_wai_gen, colors, fig_dir, mpl, np, plt, weather):
 
 
 @app.cell
-def _(best_wai, fig_dir, plt, weather):
+def _(best_wai, plt, weather):
     best_wai.draw()
     plt.tight_layout()
     plt.savefig(
-        fig_dir + f"/{weather.loc_title}_best_wai.pdf", format="pdf"
+        weather.save_tag + "best_wai.pdf", format="pdf"
     )
     plt.show()
     return
 
 
 @app.cell
-def _(colors, fig_dir, mpl, np, plt, score_fitness, time_to_color):
+def _(colors, mpl, np, plt, score_fitness, time_to_color):
     def draw_opt(best_wai, weather, savetag=""):
         p_over_p0s = np.linspace(0, 1, 100)
 
@@ -920,12 +934,39 @@ def _(colors, fig_dir, mpl, np, plt, score_fitness, time_to_color):
         # axs[1, 1].legend(fontsize=12)
 
         plt.savefig(
-            fig_dir + f"/{weather.loc_title}" + savetag + "best_wai_rich.pdf",
+            weather.save_tag + "best_wai_rich" + savetag + ".pdf",
             format="pdf",  bbox_inches="tight"
         )
 
         plt.show()
+
     return (draw_opt,)
+
+
+@app.cell
+def _(WaterAdsorptionIsotherm, np, score_fitness):
+    def top_off(best_wai, weather):
+        new_best_wai = WaterAdsorptionIsotherm(best_wai.n)
+        new_best_wai.bs = np.copy(best_wai.bs)
+    
+        fitness = score_fitness(best_wai, weather)
+        for i in range(best_wai.n):
+            new_wai = WaterAdsorptionIsotherm(best_wai.n)
+            new_wai.bs[i:] = 1.0
+            new_fitness = score_fitness(new_wai, weather)
+            if new_fitness >= fitness:
+                print("improvement found!")
+                new_best_wai.bs = new_wai.bs
+                fitness = new_fitness
+        return new_best_wai   
+
+    return (top_off,)
+
+
+@app.cell
+def _(best_wai, top_off, weather):
+    top_off(best_wai, weather)
+    return
 
 
 @app.cell
@@ -936,12 +977,10 @@ def _(best_wai, draw_opt, weather):
 
 @app.cell(hide_code=True)
 def _(mo):
-    mo.md(
-        r"""
+    mo.md(r"""
     ## baseline: a stepped adsorption isotherm
     search for best stepped adsorption isotherm
-    """
-    )
+    """)
     return
 
 
@@ -962,6 +1001,11 @@ def _(WaterAdsorptionIsotherm, dim, np, score_fitness, weather):
 @app.cell
 def _(draw_opt, id_opt_baseline, wai_all_steps, weather):
     draw_opt(wai_all_steps[id_opt_baseline], weather, savetag="baseline")
+    return
+
+
+@app.cell
+def _():
     return
 
 
