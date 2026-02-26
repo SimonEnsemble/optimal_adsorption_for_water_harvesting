@@ -1,6 +1,6 @@
 import marimo
 
-__generated_with = "0.17.6"
+__generated_with = "0.15.5"
 app = marimo.App()
 
 
@@ -22,7 +22,13 @@ def _():
 
     theme = load_theme("umbra_light")
     theme.apply()
-    plt.rcParams.update({'font.size': 14})
+    plt.rcParams.update(
+        {
+            'font.size': 14,
+            'axes.titleweight': 'normal',
+            'figure.titleweight': 'normal'
+        }
+    )
 
     # date format
     my_date_format_str = '%b-%d'
@@ -30,11 +36,16 @@ def _():
     return colors, math, mo, mpl, my_date_format, np, os, pd, plt, sns
 
 
+@app.cell
+def _(os):
+    fig_dir = "figs"
+    os.makedirs(fig_dir, exist_ok=True)
+    return (fig_dir,)
+
+
 @app.cell(hide_code=True)
 def _(mo):
-    mo.md(r"""
-    # modeling the vapor pressure of water
-    """)
+    mo.md(r"""# modeling the vapor pressure of water""")
     return
 
 
@@ -101,9 +112,7 @@ def _(np, plt):
 
 @app.cell(hide_code=True)
 def _(mo):
-    mo.md(r"""
-    # modeling a water adsorption isotherm in a MOF bed
-    """)
+    mo.md(r"""# modeling a water adsorption isotherm in a MOF bed""")
     return
 
 
@@ -169,7 +178,7 @@ def _(bern_poly, colors, mpl, np, plt):
 
         def water_del_distn(self, weather):
             w_dels = self.water_del(weather.ads_des_conditions)
-        
+
             plt.figure()
             plt.hist(w_dels)
             plt.ylabel("# days")
@@ -210,22 +219,27 @@ def _(weather):
 
 
 @app.cell
-def _(WaterAdsorptionIsotherm):
+def _(WaterAdsorptionIsotherm, fig_dir, plt):
     wai = WaterAdsorptionIsotherm(10)
-    wai.endow_random_stepped_isotherm()
+    wai.endow_stepped_isotherm(2)
     wai.draw()
+    plt.tight_layout()
+    plt.savefig(fig_dir + f"/eg_wai.pdf", format="pdf")
+    plt.show()
     return (wai,)
 
 
 @app.cell(hide_code=True)
 def _(mo):
-    mo.md(r"""
+    mo.md(
+        r"""
     # data on capture and release conditions
 
     NOAA hourly data [here](https://www.ncei.noaa.gov/access/crn/products.html).
 
     no need to pre-process now.
-    """)
+    """
+    )
     return
 
 
@@ -268,13 +282,13 @@ def _(city_to_state, fig_dir, my_date_format, np, os, pd, plt, time_to_color):
             ] # latter inferred
 
             self.time_to_hour = time_to_hour
-        
+
             self._read_raw_weather_data()
-        
+
             self._filter_missing()
-        
+
             self._process_datetime_and_filter()
-        
+
             self._minimalize_raw_data()
 
             self._day_night_data()
@@ -305,7 +319,7 @@ def _(city_to_state, fig_dir, my_date_format, np, os, pd, plt, time_to_color):
                 dtype={'LST_DATE': str}, 
                 sep='\s+'
             )
-        
+
             self._remove_rainy_days()
 
         def _remove_rainy_days(self):
@@ -363,7 +377,7 @@ def _(city_to_state, fig_dir, my_date_format, np, os, pd, plt, time_to_color):
             #     mdates.AutoDateLocator(minticks=n_days-1, maxticks=n_days+1)
             # )
 
-            axs[0].set_title(self.loc_title)
+            axs[0].set_title(self.loc_title + f" ({self.year})")
 
             # T
             if plot_lines:
@@ -426,7 +440,7 @@ def _(city_to_state, fig_dir, my_date_format, np, os, pd, plt, time_to_color):
 
             # already got legend above
             if save:
-                plt.savefig(fig_dir + f"/weather_{self.loc_timespan_title}.pdf", format="pdf", bbox_inches="tight")
+                plt.savefig(fig_dir + f"/weather_{self.loc_title}.pdf", format="pdf", bbox_inches="tight")
 
             plt.show()
 
@@ -491,7 +505,10 @@ def _(city_to_state, fig_dir, my_date_format, np, os, pd, plt, time_to_color):
 @app.cell
 def _(Weather):
     # weather = Weather([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], 2025, "Mercury")
-    weather = Weather([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], 2025, "Stovepipe")
+    mos_of_year = list(range(1, 13))
+    weather = Weather(mos_of_year, 2025, "Stovepipe")
+    # weather = Weather(mos_of_year, 2025, "Mercury")
+
 
     # weather = Weather([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], 2025, "Utqiagvik")
 
@@ -502,7 +519,7 @@ def _(Weather):
 
 
 @app.cell
-def _(sns, weather):
+def _(fig_dir, np, plt, sns, weather):
     pp = sns.pairplot(
         weather.ads_des_conditions[1:].rename(
             columns={
@@ -518,32 +535,44 @@ def _(sns, weather):
         diag_kind='kde'
     )
     pp.axes[1, 1].set_ylim(0, 1)
+    pp.axes[1, 1].set_yticks(np.linspace(0, 1, 6))
     pp.axes[3, 1].set_ylim(0, 1)
+    pp.axes[3, 1].set_yticks(np.linspace(0, 1, 6))
     pp.axes[3, 1].set_xlim(0, 1)
+    pp.axes[3, 1].set_xticks(np.linspace(0, 1, 6))
     pp.axes[3, 3].set_xlim(0, 1)
+    pp.axes[3, 3].set_xticks(np.linspace(0, 1, 6))
 
-    T_range = [0, 75]
+    T_range = [-10, 75]
     assert T_range[1] > weather.ads_des_conditions[["ads T [°C]", "des T [°C]"]].max().max()
     assert T_range[0] < weather.ads_des_conditions[["ads T [°C]", "des T [°C]"]].min().min()
 
+    T_ticks = [-10 + 20*i for i in range(5)]
+
     pp.axes[0, 0].set_xlim(T_range[0], T_range[1])
+    pp.axes[0, 0].set_xticks(T_ticks)
     pp.axes[3, 2].set_xlim(T_range[0], T_range[1])
+    pp.axes[3, 2].set_xticks(T_ticks)
     pp.axes[2, 0].set_ylim(T_range[0], T_range[1])
+    pp.axes[2, 0].set_yticks(T_ticks)
+    plt.tight_layout()
+    plt.savefig(
+        fig_dir + f"/{weather.loc_title}ads_des_conditions.pdf", 
+        format="pdf"
+    )
     pp
     return
 
 
 @app.cell
 def _(weather):
-    weather.viz_timeseries()
+    weather.viz_timeseries(save=True)
     return
 
 
 @app.cell(hide_code=True)
 def _(mo):
-    mo.md(r"""
-    ## dist'n of water deliveries
-    """)
+    mo.md(r"""## dist'n of water deliveries""")
     return
 
 
@@ -566,22 +595,24 @@ def _(score_fitness, wai, weather):
 
 
 @app.cell
-def _(fitness, plt, wai, weather):
+def _(fig_dir, fitness, plt, wai, weather):
     plt.figure()
     plt.hist(wai.water_del(weather.ads_des_conditions))
     plt.axvline(fitness, color="C1", label=f"10% VAR")
     plt.ylabel("# days")
+    plt.xlim(0, 1)
     plt.legend()
     plt.xlabel("water delivery")
+    plt.tight_layout()
+    plt.savefig(fig_dir + f"/{weather.loc_title}_eg_var.pdf", format="pdf")
+    plt.show()
     plt.show()
     return
 
 
 @app.cell(hide_code=True)
 def _(mo):
-    mo.md(r"""
-    ## evolutionary optimization
-    """)
+    mo.md(r"""## evolutionary optimization""")
     return
 
 
@@ -713,7 +744,7 @@ def _(evolve, gen_initial_pop, np, run_evol_cbox, score_fitness, weather):
         for g in range(1, n_generations):
             wais = evolve(wais)
             fitnesses = np.array([score_fitness(wai, weather) for wai in wais])
-        
+
             fitnesses_gen.append(fitnesses)
             best_wai_gen.append(wais[np.argmax(fitnesses)])
 
@@ -732,20 +763,25 @@ def _(evolve, gen_initial_pop, np, run_evol_cbox, score_fitness, weather):
 
 
 @app.cell
-def _(fitnesses_gen, plt, sns):
-    sns.swarmplot(fitnesses_gen, color="C2")
+def _(fig_dir, fitnesses_gen, plt, sns, weather):
+    sns.stripplot(fitnesses_gen, color="C2", palette="crest")
     plt.xlabel("generation")
     plt.ylabel("fitness score")
+    plt.tight_layout()
+    plt.savefig(
+        fig_dir + f"/{weather.loc_title}fitness_progress.pdf", format="pdf"
+    )
+    plt.show()
     return
 
 
 @app.cell
-def _(best_wai_gen, colors, mpl, np, plt):
+def _(best_wai_gen, colors, fig_dir, mpl, np, plt, weather):
     def viz_best_wais(best_wai_gen):
         p_over_p0s = np.linspace(0, 1, 150)
         Tref = best_wai_gen[0].Tref
 
-        colormap = mpl.colormaps['inferno'] # or 'plasma', 'coolwarm', etc.
+        colormap = mpl.colormaps['crest'] # or 'plasma', 'coolwarm', etc.
         norm = colors.Normalize(vmin=0, vmax=len(best_wai_gen))
 
         fig, ax = plt.subplots()
@@ -770,6 +806,11 @@ def _(best_wai_gen, colors, mpl, np, plt):
         plt.colorbar(
             sm, ax=cb_ax, label='generation', 
         )
+
+        plt.tight_layout()
+        plt.savefig(
+            fig_dir + f"/{weather.loc_title}wai_progress.pdf", format="pdf"
+        )
         plt.show()
 
     viz_best_wais(best_wai_gen)
@@ -777,14 +818,19 @@ def _(best_wai_gen, colors, mpl, np, plt):
 
 
 @app.cell
-def _(best_wai):
+def _(best_wai, fig_dir, plt, weather):
     best_wai.draw()
+    plt.tight_layout()
+    plt.savefig(
+        fig_dir + f"/{weather.loc_title}_best_wai.pdf", format="pdf"
+    )
+    plt.show()
     return
 
 
 @app.cell
-def _(colors, mpl, np, plt, score_fitness):
-    def draw_opt(best_wai, weather):
+def _(colors, fig_dir, mpl, np, plt, score_fitness, time_to_color):
+    def draw_opt(best_wai, weather, savetag=""):
         p_over_p0s = np.linspace(0, 1, 100)
 
         # fig, axs = plt.subplots(
@@ -793,7 +839,7 @@ def _(colors, mpl, np, plt, score_fitness):
         #     figsize=(5, 7),
         #     layout="constrained"
         # )
-        fig = plt.figure(figsize=(5, 5))
+        fig = plt.figure(figsize=(5, 5), layout="constrained")
         gs = fig.add_gridspec(2, 2, height_ratios=[1, 3], width_ratios=[2, 1])
         ax00 = fig.add_subplot(gs[0, 0])
         ax10 = fig.add_subplot(gs[1, 0], sharex=ax00) # Only these two share
@@ -839,33 +885,44 @@ def _(colors, mpl, np, plt, score_fitness):
         ###
         p_over_p0_bins = np.linspace(0, 1, 25)
         axs[0, 0].hist(
-            weather.ads_des_conditions["ads P/P0"], alpha=0.25, label="ads",
-            bins=p_over_p0_bins
+            weather.ads_des_conditions["des P/P0"], alpha=0.45, label="capture", 
+            bins=p_over_p0_bins, color=time_to_color["night"]
         )
         axs[0, 0].hist(
-            weather.ads_des_conditions["des P/P0"], alpha=0.25, label="des", 
-            bins=p_over_p0_bins
+            weather.ads_des_conditions["ads P/P0"], alpha=0.45, 
+            label="release",
+            bins=p_over_p0_bins, color=time_to_color["day"]
         )
+
         axs[0, 0].set_ylabel("# days")
         axs[0, 0].set_ylim(0, 200)
-        axs[0, 0].legend()
+        axs[0, 0].legend(fontsize=12)
 
         ###
         #   working cap dist'n
         ###
         fitness = score_fitness(best_wai, weather)
-        plt.title(f"fitness = {fitness:.2f}")
 
         axs[1, 1].hist(
             best_wai.water_del(weather.ads_des_conditions),
             orientation='horizontal', color="C4"
         )
-        axs[1, 1].axhline(fitness, color="black", linestyle="--")
+        axs[1, 1].axhline(
+            fitness, color="black", linestyle="--",
+            label=f"fitness:\n{fitness:.2f}"
+        )
+        axs[1, 1].text(
+            100, fitness+0.05, f"fitness:\n{fitness:.2f}", fontsize=12
+        )
         axs[1, 1].set_xlabel("# days")
         axs[1, 1].set_xlim(0, 200)
         axs[1, 1].set_ylabel("water delivery")
+        # axs[1, 1].legend(fontsize=12)
 
-        plt.tight_layout()
+        plt.savefig(
+            fig_dir + f"/{weather.loc_title}" + savetag + "best_wai_rich.pdf",
+            format="pdf",  bbox_inches="tight"
+        )
 
         plt.show()
     return (draw_opt,)
@@ -879,10 +936,12 @@ def _(best_wai, draw_opt, weather):
 
 @app.cell(hide_code=True)
 def _(mo):
-    mo.md(r"""
+    mo.md(
+        r"""
     ## baseline: a stepped adsorption isotherm
     search for best stepped adsorption isotherm
-    """)
+    """
+    )
     return
 
 
@@ -892,7 +951,7 @@ def _(WaterAdsorptionIsotherm, dim, np, score_fitness, weather):
     wai_all_steps = [WaterAdsorptionIsotherm(n_grid) for i in range(n_grid)]
     for n_step in np.arange(n_grid):
         wai_all_steps[n_step].endow_stepped_isotherm(n_step)
-    
+
     baseline_fitnesses = np.array(
         [score_fitness(wai, weather) for wai in wai_all_steps]
     )
@@ -902,12 +961,7 @@ def _(WaterAdsorptionIsotherm, dim, np, score_fitness, weather):
 
 @app.cell
 def _(draw_opt, id_opt_baseline, wai_all_steps, weather):
-    draw_opt(wai_all_steps[id_opt_baseline], weather)
-    return
-
-
-@app.cell
-def _():
+    draw_opt(wai_all_steps[id_opt_baseline], weather, savetag="baseline")
     return
 
 
