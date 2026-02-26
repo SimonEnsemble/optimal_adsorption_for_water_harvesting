@@ -17,25 +17,17 @@ def _():
     import matplotlib.pyplot as plt
     import matplotlib.cm as cm
     import matplotlib.colors as colors
-
     import seaborn as sns
+    from aquarel import load_theme
+
+    theme = load_theme("umbra_light")
+    theme.apply()
+    plt.rcParams.update({'font.size': 14})
 
     # date format
     my_date_format_str = '%b-%d'
     my_date_format = mdates.DateFormatter(my_date_format_str)
-    return (
-        colors,
-        math,
-        mo,
-        mpl,
-        my_date_format,
-        np,
-        os,
-        pd,
-        plt,
-        sns,
-        warnings,
-    )
+    return colors, math, mo, mpl, my_date_format, np, os, pd, plt, sns
 
 
 @app.cell(hide_code=True)
@@ -46,47 +38,61 @@ def _(mo):
     return
 
 
-@app.cell
-def _(np, warnings):
-    # input  T  : deg C
-    # output P* : bar
-    def water_vapor_presssure(T):
-        if T < 273 - 273.15 or T > 343 - 273.15:
-            warnings.warn(f"{T}°C outside T range of Antoinne eqn.")
-        A = B = C = np.nan
-        # coefficients for the following setup:
-        #  log10(P) = A − (B / (T + C))
-        #     P = vapor pressure (bar)
-        #     T = temperature (K)
-        if T > 293 - 273.15:
-            # valid for 293. to 343 K
-            A = 6.20963
-            B = 2354.731
-            C = 7.559
-        if T < 293 - 273.15: # cover a bit lower temperatures
-            # valid for 273. to 303 K
-            A = 5.40221
-            B = 1838.675
-            C = -31.737
-        return 10.0 ** (A - B / ((T + 273.15) + C))
-    return (water_vapor_presssure,)
+@app.function
+# input  T  : deg C
+# output P* : bar
+def water_vapor_presssure(T):
+    # coefficients for the following setup:
+    #  log10(P) = A − (B / (T + C))
+    #     P = vapor pressure (bar)
+    #     T = temperature (K)
+    # coefs from NIST https://webbook.nist.gov/cgi/cbook.cgi?ID=C7732185&Mask=4	
+    # T in [293, 343] K
+    if T+273.15 > 293.0 and T+273.15 < 343.0:
+        A = 6.20963
+        B = 2354.731
+        C = 7.559
+    # T in [273., 303] K
+    elif T+273.15 > 273.0 and T+273.15 > 303.0:
+        A = 5.40221
+        B = 1838.675
+        C = -31.737
+    # T in [255.9, 373.] K
+    elif T+273.15 > 255.9 and T+273.15 < 373.0: # low temp
+        A = 4.6543
+        B = 1435.264
+        C = -64.848
+    # T in [379, 573] K
+    elif T+273.15 > 379.0 and T+273.15 < 573.0: # high temp
+        A = 3.55959
+        B = 643.748
+        C = -198.043
+
+    return 10.0 ** (A - B / ((T + 273.15) + C))
 
 
 @app.cell
-def _(water_vapor_presssure):
+def _():
     water_vapor_presssure(100.0) # around 1 ATM
     return
 
 
 @app.cell
-def _(np, plt, water_vapor_presssure):
+def _():
+    water_vapor_presssure(20.0) # 0.023 atm
+    return
+
+
+@app.cell
+def _(np, plt):
     def viz_water_vapor_presssure():
-        Ts = np.linspace(273, 343, 100) - 273.15 # deg C
+        Ts = np.linspace(-5.0, 100.0, 250) # deg C
 
         plt.figure()
         plt.xlabel("T [°C]")
         plt.ylabel("P* [bar]")
         plt.plot(Ts, [water_vapor_presssure(T_i) for T_i in Ts], linewidth=3)
+        plt.scatter(100.0, water_vapor_presssure(100.0))
         plt.show()
 
     viz_water_vapor_presssure()
@@ -144,14 +150,14 @@ def _(bern_poly, colors, mpl, np, plt):
             #        with Bernstein polynomial basis functions.
             # Polanyi: A = - R T log(p / p0[T])
             #          n = n(A)
-            # set - RT log(phi) = - R T_ref log(phi_ref)
-            #     cuz we wanna know corresponding phi_ref at T_ref that gives same A
+            # set A = - RT log(phi) = - R T_ref log(phi_ref)
+            #     cuz we wanna know corresponding phi_ref at T_ref that gives same A at T
             #        T / T_Ref log(phi) = log(phi_ref)
-            #        log(phi^(T/T_Ref)) = log(phi_ref)
+            #        log(phi^(T/T_Ref)) = log(phi_ref) 
             p_over_p0_ref = p_over_p0 ** ((T + 273.15) /  (self.Tref + 273.15))
 
-            a = 0.0
-            for v in range(self.n+1):
+            a = 0.0 # amount adsorbed [unitless]
+            for v in range(self.n + 1):
                 a += self.bs[v] * bern_poly(p_over_p0_ref, v, self.n)
             return a
 
@@ -181,7 +187,7 @@ def _(bern_poly, colors, mpl, np, plt):
             colormap = mpl.colormaps['coolwarm'] # or 'plasma', 'coolwarm', etc.
             norm = colors.Normalize(vmin=10.0, vmax=60.0)
 
-            for T in np.linspace(10, 60, 4):
+            for T in np.linspace(0, 80, 6):
                 plt.plot(
                     p_over_p0s, 
                     [self.water_ads(T, p_over_p0) for p_over_p0 in p_over_p0s],
@@ -206,7 +212,7 @@ def _(weather):
 @app.cell
 def _(WaterAdsorptionIsotherm):
     wai = WaterAdsorptionIsotherm(10)
-    wai.endow_stepped_isotherm(10)
+    wai.endow_random_stepped_isotherm()
     wai.draw()
     return (wai,)
 
@@ -237,35 +243,14 @@ def _():
 
 @app.cell
 def _():
-    time_to_color = {'day': "C1", "night": "C4"}
+    time_to_color = {'day': "C4", "night": "C0"}
     time_to_color["ads"] = time_to_color["night"]
     time_to_color["des"] = time_to_color["day"]
     return (time_to_color,)
 
 
 @app.cell
-def _(pd):
-    pd.read_csv(
-                "data/CRNH0203-2025-AK_Utqiagvik_formerly_Barrow_4_ENE.txt",
-                names=open("data/headers.txt", "r").readlines()[1].split(), 
-                dtype={'LST_DATE': str}, 
-                sep='\s+'
-            )
-    return
-
-
-@app.cell
-def _(
-    city_to_state,
-    fig_dir,
-    my_date_format,
-    np,
-    os,
-    pd,
-    plt,
-    time_to_color,
-    water_vapor_presssure,
-):
+def _(city_to_state, fig_dir, my_date_format, np, os, pd, plt, time_to_color):
     class Weather:
         def __init__(
             self, months, year, location, time_to_hour={'day': 15, 'night': 5}
@@ -283,9 +268,13 @@ def _(
             ] # latter inferred
 
             self.time_to_hour = time_to_hour
+        
             self._read_raw_weather_data()
+        
             self._filter_missing()
+        
             self._process_datetime_and_filter()
+        
             self._minimalize_raw_data()
 
             self._day_night_data()
@@ -321,7 +310,9 @@ def _(
 
         def _remove_rainy_days(self):
             print("removing rainy days")
-            ids = self.raw_data.groupby("LST_DATE")["P_CALC"].transform("sum") == 0.0
+            rain_group_by_day = self.raw_data.groupby("LST_DATE")["P_CALC"]
+            print("\t# rainy days: ", (rain_group_by_day.sum() > 0.0).sum())
+            ids = rain_group_by_day.transform("sum") == 0.0
             self.raw_data = self.raw_data[ids]
 
         def _process_datetime_and_filter(self):
@@ -353,30 +344,29 @@ def _(
             #         =
             # partial pressure @ surface:
             #   SUR_RH * p0(SUR_T)
-            # sooo SUR_RH = RH * p0(T) / p0(SUR_T)
+            # => SUR_RH = RH * p0(T) / p0(SUR_T)
             self.raw_data["SUR_RH_HR_AVG"] = self.raw_data.apply(
                 lambda day: day["RH_HR_AVG"] * water_vapor_presssure(day["T_HR_AVG"]) / \
                         water_vapor_presssure(day["SUR_TEMP"]), axis=1
             )
 
-        def viz_timeseries(self, save=False, incl_legend=True, legend_dx=0.0, legend_dy=0.0, toy=False):
+        def viz_timeseries(
+            self, save=False, incl_legend=True, 
+            legend_dx=0.0, legend_dy=0.0, plot_lines=False
+        ):
             place_to_color = {'air': "k", 'surface': "k"}
 
             fig, axs = plt.subplots(2, 1, sharex=True)#, figsize=(6.4*0.8, 4.8*.8))
-            if toy:
-                for ax in axs:
-                    ax.grid(False)
             plt.xticks(rotation=90, ha='center')
             n_days = len(self.wdata["night"]["datetime"])
             # axs[1].xaxis.set_major_locator(
             #     mdates.AutoDateLocator(minticks=n_days-1, maxticks=n_days+1)
             # )
 
-            if not toy:
-                axs[0].set_title(self.loc_title)
+            axs[0].set_title(self.loc_title)
 
             # T
-            if not toy:
+            if plot_lines:
                 axs[0].plot(
                     self.raw_data["datetime"], self.raw_data["T_HR_AVG"], 
                     label="bulk air", color=place_to_color["air"], linewidth=2
@@ -390,13 +380,13 @@ def _(
                 self.wdata["night"]["datetime"], self.wdata["night"]["T_HR_AVG"],
                 edgecolors="black", clip_on=False,
                 marker="^", color=time_to_color["night"], zorder=10, label="adsorption\nconditions", 
-                s=200 if toy else 100 
+                s=25
             ) # nighttime air temperature
             axs[0].scatter(
                 self.wdata["day"]["datetime"], self.wdata["day"]["SUR_TEMP"],
                 edgecolors="black", clip_on=False,
                 marker="v", color=time_to_color["day"], zorder=10, label="desorption\nconditions",
-                s=200 if toy else 100 
+                s=25
             ) # daytime surface temperature
             # axs[0].set_title(self.location)
             axs[0].set_ylim(-5, 75)
@@ -404,7 +394,7 @@ def _(
             axs[0].set_xlim(self.raw_data["datetime"].min(), self.raw_data["datetime"].max())
 
             # RH
-            if not toy:
+            if plot_lines:
                 axs[1].plot(
                     self.raw_data["datetime"], self.raw_data["RH_HR_AVG"] / 100, 
                     color=place_to_color["air"], label="bulk air"
@@ -417,19 +407,20 @@ def _(
             axs[1].scatter(
                 self.wdata["night"]["datetime"], self.wdata["night"]["RH_HR_AVG"] / 100,
                 edgecolors="black", clip_on=False,
-                marker="^", color=time_to_color["night"], zorder=10, s=200 if toy else 100,  label="capture conditions"
+                marker="^", color=time_to_color["night"], zorder=10, 
+                s=25,  label="capture conditions"
             ) # nighttime RH
             axs[1].scatter(
                 self.wdata["day"]["datetime"], self.wdata["day"]["SUR_RH_HR_AVG"] / 100,
                 edgecolors="black", clip_on=False,
-                marker="v", color=time_to_color["day"], zorder=10, s=200 if toy else 100, label="release conditions"
+                marker="v", color=time_to_color["day"], zorder=10, s=25, label="release conditions"
             ) # day surface RH
             axs[1].set_yticks([0.2 * _i for _i in range(6)])
             if self.daynight_wdata.shape[0] > 1:
                 axs[1].xaxis.set_major_formatter(my_date_format)
             if incl_legend:
                 axs[1].legend(
-                    prop={'size': 10}, ncol=1 if toy else 2, 
+                    prop={'size': 10}, ncol=2, 
                     bbox_to_anchor=(0., 1.0 + legend_dy, 1.0 + legend_dx, .1), loc="center"
                 )#, loc="center left")
 
@@ -469,11 +460,9 @@ def _(
 
             self.daynight_wdata.sort_values(by="datetime", inplace=True)
 
-            # assert sequence day by day ie none missing
-            days = self.daynight_wdata.loc[1:, "datetime"].dt.day.values
-
         def _gen_ads_des_conditions(self):
-            self.ads_des_conditions = self.daynight_wdata.rename(columns=
+            self.ads_des_conditions = self.daynight_wdata.rename(
+                columns=
                 {
                     "datetime": "date",
                     # adsorptin conditions (night)
@@ -501,7 +490,7 @@ def _(
 
 @app.cell
 def _(Weather):
-    weather = Weather([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], 2025, "Mercury")
+    # weather = Weather([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], 2025, "Mercury")
     weather = Weather([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], 2025, "Stovepipe")
 
     # weather = Weather([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], 2025, "Utqiagvik")
@@ -513,21 +502,20 @@ def _(Weather):
 
 
 @app.cell
-def _(weather):
-    weather.daynight_wdata
-    return
-
-
-@app.cell
-def _(weather):
-    weather.ads_des_conditions
-    return
-
-
-@app.cell
 def _(sns, weather):
     pp = sns.pairplot(
-        weather.ads_des_conditions[1:], corner=True
+        weather.ads_des_conditions[1:].rename(
+            columns={
+                'ads T [°C]': 'capture $T$ [°C]',
+                'des T [°C]': 'release $T$ [°C]',
+                'ads P/P0': 'capture $p/p_0$',
+                'des P/P0': 'release $p/p_0$',
+            }
+        ), 
+        corner=True,
+        plot_kws=dict(marker="+", linewidth=1),
+        diag_kws=dict(fill=False),
+        diag_kind='kde'
     )
     pp.axes[1, 1].set_ylim(0, 1)
     pp.axes[3, 1].set_ylim(0, 1)
@@ -546,8 +534,8 @@ def _(sns, weather):
 
 
 @app.cell
-def _(eweather):
-    eweather.viz_timeseries()
+def _(weather):
+    weather.viz_timeseries()
     return
 
 
@@ -561,7 +549,8 @@ def _(mo):
 
 @app.cell
 def _(np):
-    def score_fitness(wai, weather, alpha=20.0):
+    # value at risk https://en.wikipedia.org/wiki/Value_at_risk
+    def score_fitness(wai, weather, alpha=10.0):
         # get dist'n of water dels
         water_dels = wai.water_del(weather.ads_des_conditions)
         # get worst-case water delivery, ignoring alpha % of hard cases.
@@ -580,8 +569,9 @@ def _(score_fitness, wai, weather):
 def _(fitness, plt, wai, weather):
     plt.figure()
     plt.hist(wai.water_del(weather.ads_des_conditions))
-    plt.axvline(fitness, color="C1")
+    plt.axvline(fitness, color="C1", label=f"10% VAR")
     plt.ylabel("# days")
+    plt.legend()
     plt.xlabel("water delivery")
     plt.show()
     return
@@ -597,70 +587,54 @@ def _(mo):
 
 @app.cell
 def _(WaterAdsorptionIsotherm, np, score_fitness, weather):
-    pop_size = 75
-
-    wais = [
-        WaterAdsorptionIsotherm(8)
-        for _ in range(pop_size)
-    ]
-    for _wai in wais:
-        _wai.endow_random_stepped_isotherm()
-
-    fitnesses = np.array([score_fitness(wai, weather) for wai in wais])
-    return fitnesses, pop_size, wais
-
-
-@app.cell
-def _(fitnesses, plt):
-    plt.figure()
-    plt.xlabel("fitness")
-    plt.ylabel("# soln's")
-    plt.hist(fitnesses)
-    plt.show()
-    return
-
-
-@app.cell
-def _(WaterAdsorptionIsotherm, np, score_fitness, weather):
     def evolve(
         wais, n_elite=5, tourney_size=10, 
-        n_rand=10, n_mutate=15, eps=0.05
+        n_rand=15, n_mutate=15, eps=0.05, verbose=False
     ):
         # what's the population size?
         pop_size = np.shape(wais)[0]
 
-        # dim
+        # dimension of search space
         dim = wais[0].n
 
         # compute fitnesses of each individual
         fitnesses = np.array([score_fitness(wai, weather) for wai in wais])
 
-        # grab elite individuals
-        ids_elite = np.argsort(fitnesses)[-n_elite:]
+        # which are the elite individuals?
+        ids_elite = np.argpartition(fitnesses, -n_elite)[-n_elite:]
+
+        if verbose:
+            print("initial generation")
+            print("\telite fitness: ", fitnesses[ids_elite])
+
+        # initiate new generation with the elite individuals un-modified
         new_wais = [wais[i_elite] for i_elite in ids_elite]
 
         # tournament selection
-        ids_pop = np.arange(pop_size - n_rand)
         for i in range(pop_size - n_elite - n_rand):
             # pick individuals for tournament
             ids_tourney = np.random.choice(
-                ids_pop, size=tourney_size, replace=False
+                range(pop_size), size=tourney_size, replace=False
             )
 
-            # select parents as the pair with highest fitness
-            id_a = ids_tourney[np.argsort(fitnesses[ids_tourney])[-1]]
-            id_b = ids_tourney[np.argsort(fitnesses[ids_tourney])[-2]]
+            # compete for top two (= the chosen parents)
+            ids_winners = np.argpartition(fitnesses[ids_tourney], -2)[-2:]
+            id_a = ids_tourney[ids_winners[0]]
+            id_b = ids_tourney[ids_winners[1]]
 
-            # mate
+            # mate to produce child
             wai = WaterAdsorptionIsotherm(dim)
-            alpha = np.random.rand()
+            alpha = np.random.rand() # fraction of genes of parent a
             wai.bs = alpha * wais[id_a].bs + (1 - alpha) * wais[id_b].bs
             new_wais.append(wai)
 
         # random births for exploration
         for i in range(n_rand):
             wai = WaterAdsorptionIsotherm(dim)
-            wai.endow_random_stepped_isotherm()
+            if np.random.rand() < 0.5:
+                wai.endow_random_stepped_isotherm()
+            else:
+                wai.endow_random_isotherm()
             new_wais.append(wai)
 
         # mutation
@@ -675,15 +649,31 @@ def _(WaterAdsorptionIsotherm, np, score_fitness, weather):
             new_wais[id].bs[new_wais[id].bs < 0.0] = 0.0
             new_wais[id].bs[new_wais[id].bs > 1.0] = 1.0
 
-            # print("fitness A: ", fitnesses[id_a])
-            # print("fitness B: ", fitnesses[id_b])
-
         return new_wais
     return (evolve,)
 
 
 @app.cell
-def _(evolve, fitnesses, np, plt, score_fitness, wais, weather):
+def _(WaterAdsorptionIsotherm, np):
+    def gen_initial_pop(pop_size, dim):
+        wais = [WaterAdsorptionIsotherm(dim) for _ in range(pop_size)]
+        for wai in wais:
+            if np.random.rand() < 0.5:
+                wai.endow_random_stepped_isotherm()
+            else:
+                wai.endow_random_isotherm()
+        return wais
+    return (gen_initial_pop,)
+
+
+@app.cell
+def _(evolve, gen_initial_pop, np, plt, score_fitness, weather):
+    # first generation
+    wais = gen_initial_pop(75, 25)
+
+    fitnesses = np.array([score_fitness(wai, weather) for wai in wais])
+
+    # second generation
     new_wais = evolve(wais, n_elite=5)
     new_fitnesses = np.array(
         [score_fitness(new_wai, weather) for new_wai in new_wais]
@@ -692,8 +682,8 @@ def _(evolve, fitnesses, np, plt, score_fitness, wais, weather):
     plt.figure()
     plt.xlabel("fitness")
     plt.ylabel("# soln's")
-    plt.hist(fitnesses, alpha=0.5)
-    plt.hist(new_fitnesses, alpha=0.5, label="new")
+    plt.hist(fitnesses, alpha=0.5, label="gen #1")
+    plt.hist(new_fitnesses, alpha=0.5, label="gen #2")
     plt.legend()
     plt.show()
     return
@@ -707,61 +697,94 @@ def _(mo):
 
 
 @app.cell
-def _(
-    WaterAdsorptionIsotherm,
-    evolve,
-    np,
-    plt,
-    pop_size,
-    run_evol_cbox,
-    score_fitness,
-    weather,
-):
-    def do_evolution(n_generations, pop_size, dim=15):
+def _(evolve, gen_initial_pop, np, run_evol_cbox, score_fitness, weather):
+    def do_evolution(n_generations, pop_size, dim):
         # generate population
-        wais = [WaterAdsorptionIsotherm(dim) for _ in range(pop_size)]
-        for wai in wais:
-            wai.endow_random_stepped_isotherm()
+        wais = gen_initial_pop(pop_size, dim)
 
-        # fitness
+        # score fitnesses
         fitnesses = np.array([score_fitness(wai, weather) for wai in wais])
 
-        fitness_progress = np.zeros(n_generations)
-        fitness_progress[0] = np.max(fitnesses)
+        # store progress
+        fitnesses_gen = [fitnesses]
+        best_wai_gen = [wais[np.argmax(fitnesses)]]
 
+        # evolve over generations
         for g in range(1, n_generations):
             wais = evolve(wais)
             fitnesses = np.array([score_fitness(wai, weather) for wai in wais])
-            fitness_progress[g] = np.max(fitnesses)
+        
+            fitnesses_gen.append(fitnesses)
+            best_wai_gen.append(wais[np.argmax(fitnesses)])
 
-        best_individual = wais[np.argmax(fitnesses)]
+        best_wai = wais[np.argmax(fitnesses)]
 
-        return fitness_progress, wais, best_individual
+        return fitnesses_gen, best_wai_gen, best_wai
 
     if run_evol_cbox.value:
-        n_generations = 50
+        pop_size = 75
+        n_generations = 20
         dim = 25
-        fitness_progress, evolved_wais, opt_wai = do_evolution(
-            n_generations, pop_size, dim=dim
+        fitnesses_gen, best_wai_gen, best_wai = do_evolution(
+            n_generations, pop_size, dim
         )
-
-        plt.figure()
-        plt.plot(range(np.size(fitness_progress)), fitness_progress)
-        plt.xlabel("iteration")
-        plt.ylabel("fitness")
-        plt.show()
-    return (opt_wai,)
+    return best_wai, best_wai_gen, dim, fitnesses_gen
 
 
 @app.cell
-def _(opt_wai):
-    opt_wai.draw()
+def _(fitnesses_gen, plt, sns):
+    sns.swarmplot(fitnesses_gen, color="C2")
+    plt.xlabel("generation")
+    plt.ylabel("fitness score")
+    return
+
+
+@app.cell
+def _(best_wai_gen, colors, mpl, np, plt):
+    def viz_best_wais(best_wai_gen):
+        p_over_p0s = np.linspace(0, 1, 150)
+        Tref = best_wai_gen[0].Tref
+
+        colormap = mpl.colormaps['inferno'] # or 'plasma', 'coolwarm', etc.
+        norm = colors.Normalize(vmin=0, vmax=len(best_wai_gen))
+
+        fig, ax = plt.subplots()
+        plt.xlabel("$p/p_0[T]$")
+        plt.ylabel("water adsorption")
+        for g in range(len(best_wai_gen)):
+            plt.plot(
+                p_over_p0s, 
+                [
+                    best_wai_gen[g].water_ads(Tref, p_over_p0) 
+                    for p_over_p0 in p_over_p0s
+                ], 
+                color=colormap(norm(g))
+            )
+
+        sm = plt.cm.ScalarMappable(cmap=colormap, norm=norm)
+        # sm.set_array([]) # Required for matplotlib versions < 3.4
+        cb_ax = ax.inset_axes(
+            [0.5, 0.1, 0.2, 0.6]
+        )
+        cb_ax.axis("off")
+        plt.colorbar(
+            sm, ax=cb_ax, label='generation', 
+        )
+        plt.show()
+
+    viz_best_wais(best_wai_gen)
+    return
+
+
+@app.cell
+def _(best_wai):
+    best_wai.draw()
     return
 
 
 @app.cell
 def _(colors, mpl, np, plt, score_fitness):
-    def draw_opt(opt_wai, weather):
+    def draw_opt(best_wai, weather):
         p_over_p0s = np.linspace(0, 1, 100)
 
         # fig, axs = plt.subplots(
@@ -794,7 +817,7 @@ def _(colors, mpl, np, plt, score_fitness):
         for T in np.linspace(10, 60, 4):
             axs[1, 0].plot(
                 p_over_p0s, 
-                [opt_wai.water_ads(T, p_over_p0) for p_over_p0 in p_over_p0s],
+                [best_wai.water_ads(T, p_over_p0) for p_over_p0 in p_over_p0s],
                 color=colormap(norm(T))
             )
 
@@ -830,11 +853,11 @@ def _(colors, mpl, np, plt, score_fitness):
         ###
         #   working cap dist'n
         ###
-        fitness = score_fitness(opt_wai, weather)
+        fitness = score_fitness(best_wai, weather)
         plt.title(f"fitness = {fitness:.2f}")
 
         axs[1, 1].hist(
-            opt_wai.water_del(weather.ads_des_conditions),
+            best_wai.water_del(weather.ads_des_conditions),
             orientation='horizontal', color="C4"
         )
         axs[1, 1].axhline(fitness, color="black", linestyle="--")
@@ -849,8 +872,8 @@ def _(colors, mpl, np, plt, score_fitness):
 
 
 @app.cell
-def _(draw_opt, opt_wai, weather):
-    draw_opt(opt_wai, weather)
+def _(best_wai, draw_opt, weather):
+    draw_opt(best_wai, weather)
     return
 
 
@@ -864,8 +887,8 @@ def _(mo):
 
 
 @app.cell
-def _(WaterAdsorptionIsotherm, np, score_fitness, weather):
-    n_grid = 100
+def _(WaterAdsorptionIsotherm, dim, np, score_fitness, weather):
+    n_grid = dim
     wai_all_steps = [WaterAdsorptionIsotherm(n_grid) for i in range(n_grid)]
     for n_step in np.arange(n_grid):
         wai_all_steps[n_step].endow_stepped_isotherm(n_step)
