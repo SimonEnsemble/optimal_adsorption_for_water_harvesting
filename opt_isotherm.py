@@ -1,6 +1,6 @@
 import marimo
 
-__generated_with = "0.17.6"
+__generated_with = "0.20.2"
 app = marimo.App()
 
 
@@ -139,6 +139,7 @@ def _(mo):
 def _(math):
     def bern_poly(x, v, n):
         return math.comb(n, v) * x ** v * (1.0 - x) ** (n - v)
+
     return (bern_poly,)
 
 
@@ -159,7 +160,7 @@ def _(bern_poly, colors, mpl, np, plt):
             self.bs = np.full(n + 1, np.nan)
 
         def endow_random_isotherm(self):
-            self.bs = np.sort(np.random.rand(self.n+1)) * self.w_max
+            self.bs[1:-1] = np.sort(np.random.rand(self.n - 1)) * self.w_max
             self.bs[0]  = 0.0 # start at zero
             self.bs[-1] = self.w_max # end at 1
 
@@ -168,7 +169,7 @@ def _(bern_poly, colors, mpl, np, plt):
             self.bs[i:] = self.w_max
 
         def endow_random_stepped_isotherm(self):
-            i = np.random.choice(self.n)
+            i = np.random.choice(self.n+1)
             self.endow_stepped_isotherm(i)    
 
         def water_ads(self, T, p_over_p0):
@@ -232,6 +233,7 @@ def _(bern_poly, colors, mpl, np, plt):
             plt.ylim(0, self.w_max)
 
             plt.show()
+
     return (WaterAdsorptionIsotherm,)
 
 
@@ -507,6 +509,7 @@ def _(city_to_state, fig_dir, my_date_format, np, os, pd, plt, time_to_color):
                   np.sum(self.raw_data["T_HR_AVG"] < -999.0)
             )
             self.raw_data = self.raw_data[self.raw_data["T_HR_AVG"] > -999.0]
+
     return (Weather,)
 
 
@@ -601,6 +604,7 @@ def _(np):
         water_dels = wai.water_del(weather.ads_des_conditions)
         # get worst-case water delivery, ignoring alpha % of hard cases.
         return np.percentile(water_dels, alpha)
+
     return (score_fitness,)
 
 
@@ -696,13 +700,15 @@ def _(WaterAdsorptionIsotherm, np, score_fitness, weather):
             id = np.random.choice(np.arange(n_elite, pop_size))
 
             # mutation
-            delta_b = eps * np.sort(np.random.rand(dim + 1))
+            delta_b = 2 * eps * np.sort(np.random.rand(dim - 1) - 0.5)
 
-            new_wais[id].bs += delta_b
+            new_wais[id].bs[1:-1] += delta_b
             new_wais[id].bs[new_wais[id].bs < 0.0] = 0.0
             new_wais[id].bs[new_wais[id].bs > w_max] = w_max
+            new_wais[id].bs[-1] = w_max
 
         return new_wais
+
     return (evolve,)
 
 
@@ -716,6 +722,7 @@ def _(WaterAdsorptionIsotherm, np):
             else:
                 wai.endow_random_isotherm()
         return wais
+
     return (gen_initial_pop,)
 
 
@@ -773,6 +780,7 @@ def _(evolve, gen_initial_pop, np, score_fitness, weather):
         best_wai = wais[np.argmax(fitnesses)]
 
         return fitnesses_gen, best_wai_gen, best_wai
+
     return (do_evolution,)
 
 
@@ -780,7 +788,7 @@ def _(evolve, gen_initial_pop, np, score_fitness, weather):
 def _(do_evolution, run_evol_cbox):
     if run_evol_cbox.value:
         pop_size = 75
-        n_generations = 20
+        n_generations = 25
         dim = 25
         fitnesses_gen, best_wai_gen, best_wai = do_evolution(
             n_generations, pop_size, dim
@@ -810,6 +818,7 @@ def _(WaterAdsorptionIsotherm, np, score_fitness):
                 new_best_wai.bs = new_wai.bs
                 fitness = new_fitness
         return new_best_wai   
+
     return (top_off,)
 
 
@@ -988,6 +997,7 @@ def _(colors, mpl, my_colors, np, plt, score_fitness, time_to_color):
         )
 
         plt.show()
+
     return (draw_opt,)
 
 
