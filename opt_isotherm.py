@@ -787,9 +787,9 @@ def _(evolve, gen_initial_pop, np, score_fitness, weather):
 @app.cell
 def _(do_evolution, run_evol_cbox):
     if run_evol_cbox.value:
-        pop_size = 75
+        pop_size = 65
         n_generations = 25
-        dim = 25
+        dim = 30
         fitnesses_gen, best_wai_gen, best_wai = do_evolution(
             n_generations, pop_size, dim
         )
@@ -831,10 +831,13 @@ def _(best_wai, top_off, weather):
 
 
 @app.cell
-def _(fitnesses_gen, plt, sns, weather):
+def _(baseline_fitnesses, fitnesses_gen, id_opt_baseline, plt, sns, weather):
     sns.stripplot(fitnesses_gen, color="C2", palette="crest")
     plt.xlabel("generation")
     plt.ylabel("fitness [kg H$_2$O/kg MOF]")
+    plt.axhline(
+        y=baseline_fitnesses[id_opt_baseline], color="black", linestyle="--"
+    )
     plt.tight_layout()
     plt.savefig(
         weather.save_tag + "fitness_progress.pdf", format="pdf"
@@ -976,7 +979,8 @@ def _(colors, mpl, my_colors, np, plt, score_fitness, time_to_color):
 
         axs[1, 1].hist(
             best_wai.water_del(weather.ads_des_conditions),
-            orientation='horizontal', edgecolor=my_colors[4], histtype='step'
+            orientation='horizontal', 
+            edgecolor=my_colors[4], histtype='step'
         )
         axs[1, 1].axhline(
             fitness, color="black", linestyle="--",
@@ -1027,7 +1031,7 @@ def _(WaterAdsorptionIsotherm, dim, np, score_fitness, weather):
         [score_fitness(wai, weather) for wai in wai_all_steps]
     )
     id_opt_baseline = np.argmax(baseline_fitnesses)
-    return id_opt_baseline, wai_all_steps
+    return baseline_fitnesses, id_opt_baseline, wai_all_steps
 
 
 @app.cell
