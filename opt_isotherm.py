@@ -38,8 +38,17 @@ def _():
 
 @app.cell
 def _(sns):
-    sns.color_palette("Set2")
-    return
+    color_pallette = sns.color_palette("Set2")
+    color_pallette
+    return (color_pallette,)
+
+
+@app.cell
+def _(color_pallette):
+    time_to_color = {'day': color_pallette[1], "night": color_pallette[2]}
+    time_to_color["ads"] = time_to_color["night"]
+    time_to_color["des"] = time_to_color["day"]
+    return (time_to_color,)
 
 
 @app.cell
@@ -259,14 +268,6 @@ def _():
         'Stovepipe': 'CA'
     }
     return (city_to_state,)
-
-
-@app.cell
-def _():
-    time_to_color = {'day': "C4", "night": "C0"}
-    time_to_color["ads"] = time_to_color["night"]
-    time_to_color["des"] = time_to_color["day"]
-    return (time_to_color,)
 
 
 @app.cell
