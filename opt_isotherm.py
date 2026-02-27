@@ -38,14 +38,14 @@ def _():
 
 @app.cell
 def _(sns):
-    color_pallette = sns.color_palette("Set2")
-    color_pallette
-    return (color_pallette,)
+    my_colors = sns.color_palette("Set2")
+    my_colors
+    return (my_colors,)
 
 
 @app.cell
-def _(color_pallette):
-    time_to_color = {'day': color_pallette[1], "night": color_pallette[2]}
+def _(my_colors):
+    time_to_color = {'day': my_colors[1], "night": my_colors[2]}
     time_to_color["ads"] = time_to_color["night"]
     time_to_color["des"] = time_to_color["day"]
     return (time_to_color,)
@@ -412,7 +412,7 @@ def _(city_to_state, fig_dir, my_date_format, np, os, pd, plt, time_to_color):
             ) # daytime surface temperature
             # axs[0].set_title(self.location)
             axs[0].set_ylim(-5, 75)
-            axs[0].set_yticks([10 * _i for _i in range(1, 7)])
+            axs[0].set_yticks([-10 + 10 * _i for _i in range(8)])
             axs[0].set_xlim(self.raw_data["datetime"].min(), self.raw_data["datetime"].max())
 
             # RH
@@ -442,7 +442,7 @@ def _(city_to_state, fig_dir, my_date_format, np, os, pd, plt, time_to_color):
                 axs[1].xaxis.set_major_formatter(my_date_format)
             if incl_legend:
                 axs[1].legend(
-                    prop={'size': 10}, ncol=2, 
+                    prop={'size': 10}, ncol=1, 
                     bbox_to_anchor=(0., 1.0 + legend_dy, 1.0 + legend_dx, .1), loc="center"
                 )#, loc="center left")
 
@@ -527,7 +527,13 @@ def _(Weather):
 
 
 @app.cell
-def _(np, plt, sns, weather):
+def _(my_colors):
+    my_colors
+    return
+
+
+@app.cell
+def _(my_colors, np, plt, sns, weather):
     with sns.plotting_context("notebook", font_scale=1.4):
         pp = sns.pairplot(
             weather.ads_des_conditions[1:].rename(
@@ -537,10 +543,10 @@ def _(np, plt, sns, weather):
                     'ads P/P0': 'capture $p/p_0(T)$',
                     'des P/P0': 'release $p/p_0(T)$',
                 }
-            ), 
+            ),
             corner=True,
-            plot_kws=dict(marker="+", linewidth=1),
-            diag_kws=dict(fill=False),
+            plot_kws=dict(marker="+", linewidth=1, color=my_colors[0]),
+            diag_kws=dict(fill=False, color=my_colors[0]),
             diag_kind='kde'
         )
         pp.axes[1, 1].set_ylim(0, 1)
@@ -819,7 +825,7 @@ def _(best_wai, top_off, weather):
 def _(fitnesses_gen, plt, sns, weather):
     sns.stripplot(fitnesses_gen, color="C2", palette="crest")
     plt.xlabel("generation")
-    plt.ylabel("fitness score")
+    plt.ylabel("fitness [kg H$_2$O/kg MOF]")
     plt.tight_layout()
     plt.savefig(
         weather.save_tag + "fitness_progress.pdf", format="pdf"
@@ -839,7 +845,7 @@ def _(best_wai_gen, colors, mpl, np, plt, weather):
 
         plt.figure()
         plt.xlabel("$p/p_0[T]$")
-        plt.ylabel("water adsorption")
+        plt.ylabel("water adsorption [kg H$_2$O/kg MOF]")
         for g in range(len(best_wai_gen)):
             plt.plot(
                 p_over_p0s, 
@@ -871,8 +877,8 @@ def _(best_wai_gen, colors, mpl, np, plt, weather):
 
 
 @app.cell
-def _(plt, weather):
-    # best_wai.draw()
+def _(best_wai, plt, weather):
+    best_wai.draw()
     plt.tight_layout()
     plt.savefig(
         weather.save_tag + "best_wai.pdf", format="pdf"
@@ -882,7 +888,7 @@ def _(plt, weather):
 
 
 @app.cell
-def _(colors, mpl, np, plt, score_fitness, time_to_color):
+def _(colors, mpl, my_colors, np, plt, score_fitness, time_to_color):
     def draw_opt(best_wai, weather, savetag=""):
         p_over_p0s = np.linspace(0, 1, 100)
 
@@ -908,6 +914,7 @@ def _(colors, mpl, np, plt, score_fitness, time_to_color):
         #   adsorption isotherm
         ###
         axs[1, 0].set_xlabel("$p / [p_0(T)]$")
+        axs[1, 0].set_xticks(np.linspace(0, 1, 6))
         axs[1, 0].set_ylabel("water adsorption [kg H$_2$O/kg MOF]")
 
         colormap = mpl.colormaps['coolwarm'] # or 'plasma', 'coolwarm', etc.
@@ -949,6 +956,7 @@ def _(colors, mpl, np, plt, score_fitness, time_to_color):
         )
 
         axs[0, 0].set_ylabel("# days")
+        axs[0, 0].set_yticks([0, 100, 200])
         axs[0, 0].set_ylim(0, 200)
         axs[0, 0].legend(fontsize=12)
 
@@ -959,20 +967,20 @@ def _(colors, mpl, np, plt, score_fitness, time_to_color):
 
         axs[1, 1].hist(
             best_wai.water_del(weather.ads_des_conditions),
-            orientation='horizontal', edgecolor="C3", histtype='step'
+            orientation='horizontal', edgecolor=my_colors[4], histtype='step'
         )
         axs[1, 1].axhline(
             fitness, color="black", linestyle="--",
             label=f"fitness:\n{fitness:.2f}"
         )
-        axs[1, 1].text(
-            100, fitness+0.05, f"fitness:\n{fitness:.2f}", 
-            fontsize=12
-        )
         axs[1, 1].set_xlabel("# days")
+        axs[1, 1].set_xticks([0, 100, 200])
         axs[1, 1].set_xlim(0, 200)
-        axs[1, 1].set_ylabel("water delivery")
+        axs[1, 1].set_ylabel("water delivery [kg H$_2$O/kg MOF]")
         # axs[1, 1].legend(fontsize=12)
+
+        # fitness label:
+        fitness_label = f"fitness:\n{fitness:.2f} kg H$_2$O/kg MOF",
 
         plt.savefig(
             weather.save_tag + "best_wai_rich" + savetag + ".pdf",
