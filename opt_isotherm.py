@@ -923,7 +923,7 @@ def _(evolve, gen_initial_pop, np, score_fitness):
 @app.cell
 def _(do_evolution, run_evol_cbox, weather):
     if run_evol_cbox.value:
-        pop_size = 65
+        pop_size = 50
         n_generations = 15
         dim = 30
         fitnesses_gen, best_wai_gen, best_wai, best_fitness = do_evolution(
@@ -1025,6 +1025,7 @@ def _(best_wai, plt, weather):
 @app.cell
 def _(best_wai, np, plt, sns, weather):
     def viz_daily_performance(wai, weather):
+        # TODO plot delta p/P0, delta T
         conditions = weather.ads_des_conditions.copy()
         conditions["water delivery [kg H$_2$O/kg MOF]"] = wai.water_del(
             weather.ads_des_conditions
