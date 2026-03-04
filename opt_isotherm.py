@@ -778,7 +778,12 @@ def _(mo):
 
 @app.cell
 def _(my_colors, np, plt):
-    def viz_wais(wais):
+    def viz_wais(
+        wais, savename=None, material_labels=None
+    ):
+        if material_labels is None:
+            material_labels = [f"#{w}" for w in range(len(wais))]
+                           
         the_colors = [my_colors[0]] + my_colors[3:]
         p_over_p0s = np.linspace(0, 1, 100)
 
@@ -794,12 +799,16 @@ def _(my_colors, np, plt):
                 p_over_p0s, 
                 [wai.water_ads(wai.Tref, p_over_p0) for p_over_p0 in p_over_p0s],
                 color=the_colors[w],
-                label=f"#{w}"
+                label=material_labels[w]
             )
 
         plt.xlim(0, 1)
         plt.ylim(0, wais[0].w_max)
         plt.legend(title="model material", fontsize=8, title_fontsize=10)
+        if savename is not None:
+            plt.savefig(
+                savename + ".pdf", format="pdf",  bbox_inches="tight"
+            )
         plt.show()
 
     return (viz_wais,)
@@ -831,6 +840,14 @@ def _(WaterAdsorptionIsotherm, np):
     return (random_birth,)
 
 
+@app.cell
+def _(dim, random_birth, viz_wais):
+    viz_wais(
+        [random_birth(dim) for i in range(4)], savename="random_births"
+    )
+    return
+
+
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -860,7 +877,7 @@ def _(WaterAdsorptionIsotherm, mutate, viz_wais):
     _wais[0].endow_random_isotherm()
     _wais.append(_wais[0].copy())
     mutate(_wais[1], 0.05)
-    viz_wais(_wais)
+    viz_wais(_wais, material_labels=["original", "mutated"], savename="mutation")
     return
 
 
@@ -927,7 +944,11 @@ def _(WaterAdsorptionIsotherm, random_combination, viz_wais):
     _rand_wais[0].endow_stepped_isotherm(4)
     _rand_wais[1].endow_stepped_isotherm(8)
     _rand_wais.append(random_combination(_rand_wais[0], _rand_wais[1]))
-    viz_wais(_rand_wais)
+    viz_wais(
+        _rand_wais, 
+        material_labels=["parent A", "parent B", "child"],
+        savename="combination"
+    )
     return
 
 
@@ -968,7 +989,11 @@ def _(WaterAdsorptionIsotherm, random_cross_over, viz_wais):
     _rand_wais[1].endow_random_isotherm()
 
     _rand_wais.append(random_cross_over(_rand_wais[0], _rand_wais[1]))
-    viz_wais(_rand_wais)
+    viz_wais(
+        _rand_wais, 
+        material_labels=["parent A", "parent B", "child"],
+        savename="crossover"
+    )
     return
 
 
@@ -977,18 +1002,6 @@ def _(mo):
     mo.md(r"""
     local search through stepify
     """)
-    return
-
-
-@app.cell
-def _(wai):
-    wai.bs
-    return
-
-
-@app.cell
-def _(wai):
-    wai.bs[:1]
     return
 
 
@@ -1049,7 +1062,11 @@ def _(WaterAdsorptionIsotherm, ls_stepify, viz_wais, weather):
     _wai.endow_random_isotherm()
     _wai2 = _wai.copy()
     ls_stepify(_wai2, weather, verbose=True)
-    viz_wais([_wai, _wai2])
+    viz_wais(
+        [_wai, _wai2], 
+        material_labels=["original", "stepified"],
+        savename="stepify"
+    )
     return
 
 
