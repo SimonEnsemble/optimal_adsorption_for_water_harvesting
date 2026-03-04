@@ -1,6 +1,6 @@
 import marimo
 
-__generated_with = "0.20.2"
+__generated_with = "0.17.6"
 app = marimo.App()
 
 
@@ -142,7 +142,7 @@ def _(np, plt):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    # ::lucide:cloud-sun:: data on capture and release conditions
+    # ☀️ weather time series data (for capture and release conditions)
 
     NOAA hourly data [here](https://www.ncei.noaa.gov/access/crn/products.html).
 
@@ -416,7 +416,7 @@ def _(city_to_state, fig_dir, my_date_format, np, os, pd, plt, time_to_color):
                 ["ads T [°C]", "des T [°C]"]
             ].min().min()
             T_min = np.floor(T_min / 10) * 10
-        
+
             T_max = self.ads_des_conditions[
                 ["ads T [°C]", "des T [°C]"]
             ].max().max()
@@ -432,7 +432,6 @@ def _(city_to_state, fig_dir, my_date_format, np, os, pd, plt, time_to_color):
                   np.sum(self.raw_data["T_HR_AVG"] < -999.0)
             )
             self.raw_data = self.raw_data[self.raw_data["T_HR_AVG"] > -999.0]
-
     return (Weather,)
 
 
@@ -486,6 +485,7 @@ def _(my_colors, plt, sns, weather):
         pp.axes[3, 2].set_xticks(weather.T_ticks)
         pp.axes[2, 0].set_ylim(weather.T_range)
         pp.axes[2, 0].set_yticks(weather.T_ticks)
+    
         plt.tight_layout()
         plt.savefig(
             weather.save_tag + "ads_des_conditions.pdf", 
@@ -506,15 +506,15 @@ def _(mo):
 @app.cell
 def _(weather):
     p_over_p0_max = weather.p_ovr_p0_max
+    p_over_p0_ticks = weather.p_ovr_p0_ticks
     p_over_p0_max
-    return (p_over_p0_max,)
+    return p_over_p0_max, p_over_p0_ticks
 
 
 @app.cell
 def _(math):
     def bern_poly(x, v, n):
         return math.comb(n, v) * x ** v * (1.0 - x) ** (n - v)
-
     return (bern_poly,)
 
 
@@ -541,13 +541,13 @@ def _(bern_poly, colors, mpl, np, p_over_p0_max, plt):
                 self.bs = np.full(n + 1, np.nan)
             else:
                 self.bs = bs
-            
+
         def copy(self):
             return WaterAdsorptionIsotherm(
                 self.n, Tref=self.Tref, p_ovr_p0_max=self.p_ovr_p0_max,
                 w_max=self.w_max, bs=np.copy(self.bs)
             )
-        
+
         def endow_random_isotherm(self):
             self.bs[1:-1] = np.sort(np.random.rand(self.n - 1)) * self.w_max
             self.bs[0]  = 0.0 # start at zero
@@ -576,7 +576,7 @@ def _(bern_poly, colors, mpl, np, p_over_p0_max, plt):
             #        T / T_Ref log(phi) = log(phi_ref)
             #        log(phi^(T/T_Ref)) = log(phi_ref) 
             p_over_p0_ref = p_over_p0 ** ((T + 273.15) /  (self.Tref + 273.15))
-        
+
             if p_over_p0_ref > self.p_ovr_p0_max:
                 return self.w_max
 
@@ -584,7 +584,7 @@ def _(bern_poly, colors, mpl, np, p_over_p0_max, plt):
             x = p_over_p0_ref / self.p_ovr_p0_max
             for v in range(self.n + 1):
                 a += self.bs[v] * bern_poly(x, v, self.n)
-            
+
             return a
 
         def water_del(self, conditions):
@@ -630,7 +630,6 @@ def _(bern_poly, colors, mpl, np, p_over_p0_max, plt):
             plt.ylim(0, self.w_max)
 
             plt.show()
-
     return (WaterAdsorptionIsotherm,)
 
 
@@ -666,15 +665,7 @@ def _(np):
         water_dels = wai.water_del(weather.ads_des_conditions)
         # get worst-case water delivery, ignoring alpha % of hard cases.
         return np.percentile(water_dels, alpha)
-
     return (score_fitness,)
-
-
-@app.cell
-def _(wai, weather):
-    water_dels = wai.water_del(weather.ads_des_conditions)
-    water_dels
-    return
 
 
 @app.cell
@@ -709,7 +700,7 @@ def _(mo):
 
 
 @app.cell
-def _(draw_rh_distn, my_colors, np, plt, score_fitness):
+def _(draw_rh_distn, my_colors, np, p_over_p0_ticks, plt, score_fitness):
     def compare_wais(wais, weather, savetag=""):
         the_colors = [my_colors[0]] + my_colors[3:]
         p_over_p0s = np.linspace(0, weather.p_ovr_p0_max, 100)
@@ -774,7 +765,7 @@ def _(draw_rh_distn, my_colors, np, plt, score_fitness):
             )
         axs[1, 1].set_ylabel("# days")
         axs[1, 1].set_yticks([0, 100, 200])
-        axs[1, 1].set_xticks(np.linspace(0, 1, 11)[:5])
+        axs[1, 1].set_xticks(p_over_p0_ticks)
         axs[1, 1].set_ylim(0, 300)
         axs[1, 1].set_xlabel("water delivery\n[kg H$_2$O/kg MOF]")
         # axs[1, 1].legend(fontsize=12)
@@ -788,7 +779,6 @@ def _(draw_rh_distn, my_colors, np, plt, score_fitness):
         )
 
         plt.show()
-
     return (compare_wais,)
 
 
@@ -826,22 +816,19 @@ def _(mo):
 
 
 @app.cell
-def _(my_colors, np, plt):
+def _(my_colors, np, p_over_p0_ticks, plt):
     def viz_wais(
         wais, savename=None, material_labels=None
     ):
         if material_labels is None:
             material_labels = [f"#{w}" for w in range(len(wais))]
-                           
+
         the_colors = [my_colors[0]] + my_colors[3:]
         p_over_p0s = np.linspace(0, wais[0].p_ovr_p0_max, 100)
 
         fig = plt.figure()
         plt.xlabel("$p / [p_0(T)]$")
-        plt.xticks(
-            np.linspace(
-                0, wais[0].p_ovr_p0_max, int(np.ceil(wais[0].p_ovr_p0_max*10)))+1
-        )
+        plt.xticks(p_over_p0_ticks)
         plt.ylabel(
             f"water adsorption at {wais[0].Tref:.0f}°C\n[kg H$_2$O/kg MOF]"
         )
@@ -862,7 +849,6 @@ def _(my_colors, np, plt):
                 savename + ".pdf", format="pdf",  bbox_inches="tight"
             )
         plt.show()
-
     return (viz_wais,)
 
 
@@ -888,14 +874,13 @@ def _(WaterAdsorptionIsotherm, np):
         else:
             wai.endow_random_isotherm()
         return wai
-
     return (random_birth,)
 
 
 @app.cell
-def _(dim, random_birth, viz_wais):
+def _(n, random_birth, viz_wais):
     viz_wais(
-        [random_birth(dim) for i in range(4)], savename="random_births"
+        [random_birth(n) for i in range(4)], savename="random_births"
     )
     return
 
@@ -919,7 +904,6 @@ def _(np):
         wai.bs[wai.bs < 0.0] = 0.0
         wai.bs[wai.bs > wai.w_max] = wai.w_max
         wai.bs[-1] = wai.w_max
-
     return (mutate,)
 
 
@@ -936,14 +920,7 @@ def _(WaterAdsorptionIsotherm, mutate, viz_wais):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    tournament selection        ids_tourney = np.random.choice(
-                range(pop_size), size=tourney_size, replace=False
-            )
-
-            # compete for top two (= the chosen parents)
-            ids_winners = np.argpartition(fitnesses[ids_tourney], -2)[-2:]
-            id_a = ids_tourney[ids_winners[0]]
-            id_b = ids_tourney[ids_winners[1]]
+    tournament selection
     """)
     return
 
@@ -960,7 +937,6 @@ def _(np):
         id_a = ids_tourney[ids_winners[0]]
         id_b = ids_tourney[ids_winners[1]]
         return id_a, id_b
-
     return (run_tournament,)
 
 
@@ -982,11 +958,10 @@ def _(mo):
 def _(WaterAdsorptionIsotherm, np):
     def random_combination(wai_a, wai_b):
         alpha = np.random.rand() # fraction of genes of parent a
-    
+
         return WaterAdsorptionIsotherm(
             wai_a.n, bs=alpha * wai_a.bs + (1 - alpha) * wai_b.bs
         )
-
     return (random_combination,)
 
 
@@ -1028,9 +1003,8 @@ def _(np):
 
         # enforce monotonicity
         wai.bs = np.sort(wai.bs)
-    
-        return wai
 
+        return wai
     return (random_cross_over,)
 
 
@@ -1086,7 +1060,7 @@ def _(score_fitness):
                 fitness = new_fitness
             else:
                 break 
-            
+
         # destroy capacity at low p/p0 until fitness decreases
         for i in range(1, wai.n): # walk forwards thru array
             new_wai.bs[:i] = 0.0
@@ -1104,7 +1078,6 @@ def _(score_fitness):
                 fitness = new_fitness
             else:
                 break 
-
     return (ls_stepify,)
 
 
@@ -1113,7 +1086,7 @@ def _(WaterAdsorptionIsotherm, ls_stepify, viz_wais, weather):
     _wai = WaterAdsorptionIsotherm(20)
     _wai.endow_random_isotherm()
     _wai2 = _wai.copy()
-    ls_stepify(_wai2, weather, verbose=True)
+    ls_stepify(_wai2, weather, verbose=False)
     viz_wais(
         [_wai, _wai2], 
         material_labels=["original", "stepified"],
@@ -1184,7 +1157,7 @@ def _(
                 new_wai = random_cross_over(wais[id_a], wais[id_b])
             else:
                 new_wai = random_combination(wais[id_a], wais[id_b])
-        
+
             new_wais.append(new_wai)
 
         # random births for exploration
@@ -1200,7 +1173,6 @@ def _(
             mutate(new_wais[id], eps)
 
         return new_wais
-
     return (evolve,)
 
 
@@ -1208,7 +1180,6 @@ def _(
 def _(random_birth):
     def gen_initial_pop(pop_size, n):
         return [random_birth(n) for _ in range(pop_size)]
-
     return (gen_initial_pop,)
 
 
@@ -1267,7 +1238,6 @@ def _(evolve, gen_initial_pop, np, score_fitness):
         best_fitness = np.max(fitnesses)
 
         return fitnesses_gen, best_wai_gen, best_wai, best_fitness
-
     return (do_evolution,)
 
 
@@ -1276,11 +1246,11 @@ def _(do_evolution, run_evol_cbox, weather):
     if run_evol_cbox.value:
         pop_size = 50
         n_generations = 25
-        dim = 30
+        n = 30
         fitnesses_gen, best_wai_gen, best_wai, best_fitness = do_evolution(
-            weather, n_generations, pop_size, dim
+            weather, n_generations, pop_size, n
         )
-    return best_fitness, best_wai, best_wai_gen, dim, fitnesses_gen
+    return best_fitness, best_wai, best_wai_gen, fitnesses_gen, n
 
 
 @app.cell
@@ -1323,7 +1293,7 @@ def _(fitnesses_gen, pd, plt, sns, weather):
 @app.cell
 def _(best_wai_gen, colors, mpl, np, plt, weather):
     def viz_best_wais(best_wai_gen):
-        p_over_p0s = np.linspace(0, 1, 150)
+        p_over_p0s = np.linspace(0, best_wai_gen[0].p_ovr_p0_max, 150)
         Tref = best_wai_gen[0].Tref
 
         colormap = mpl.colormaps['crest'] # or 'plasma', 'coolwarm', etc.
@@ -1374,7 +1344,7 @@ def _(best_wai, plt, weather):
 
 
 @app.cell
-def _(best_wai, np, plt, sns, weather):
+def _(best_wai, plt, sns, weather):
     def viz_daily_performance(wai, weather):
         # TODO plot delta p/P0, delta T
         conditions = weather.ads_des_conditions.copy()
@@ -1401,24 +1371,21 @@ def _(best_wai, np, plt, sns, weather):
             bbox_to_anchor=(0.8, 0.8) 
         )
 
-        pp.axes[1, 1].set_ylim(0, 1)
-        pp.axes[1, 1].set_yticks(np.linspace(0, 1, 6))
-        pp.axes[3, 1].set_ylim(0, 1)
-        pp.axes[3, 1].set_yticks(np.linspace(0, 1, 6))
-        pp.axes[3, 1].set_xlim(0, 1)
-        pp.axes[3, 1].set_xticks(np.linspace(0, 1, 6))
-        pp.axes[3, 3].set_xlim(0, 1)
-        pp.axes[3, 3].set_xticks(np.linspace(0, 1, 6))
+        pp.axes[1, 1].set_ylim(0, weather.p_ovr_p0_max)
+        pp.axes[1, 1].set_yticks(weather.p_ovr_p0_ticks)
+        pp.axes[3, 1].set_ylim(0, weather.p_ovr_p0_max)
+        pp.axes[3, 1].set_yticks(weather.p_ovr_p0_ticks)
+        pp.axes[3, 1].set_xlim(0, weather.p_ovr_p0_max)
+        pp.axes[3, 1].set_xticks(weather.p_ovr_p0_ticks)
+        pp.axes[3, 3].set_xlim(0, weather.p_ovr_p0_max)
+        pp.axes[3, 3].set_xticks(weather.p_ovr_p0_ticks)
 
-        T_range = [-10, 75]
-        T_ticks = [-10 + 20*i for i in range(5)]
-
-        pp.axes[0, 0].set_xlim(T_range[0], T_range[1])
-        pp.axes[0, 0].set_xticks(T_ticks)
-        pp.axes[3, 2].set_xlim(T_range[0], T_range[1])
-        pp.axes[3, 2].set_xticks(T_ticks)
-        pp.axes[2, 0].set_ylim(T_range[0], T_range[1])
-        pp.axes[2, 0].set_yticks(T_ticks)
+        pp.axes[0, 0].set_xlim(weather.T_range)
+        pp.axes[0, 0].set_xticks(weather.T_ticks)
+        pp.axes[3, 2].set_xlim(weather.T_range)
+        pp.axes[3, 2].set_xticks(weather.T_ticks)
+        pp.axes[2, 0].set_ylim(weather.T_range)
+        pp.axes[2, 0].set_yticks(weather.T_ticks)
 
         for i in range(4):
             pp.axes[i, i].set_visible(False)
@@ -1465,14 +1432,22 @@ def _(np, time_to_color):
         ax.set_yticks([0, 100, 200])
         ax.set_ylim(0, 200)
         ax.legend(fontsize=12)
-
     return (draw_rh_distn,)
 
 
 @app.cell
-def _(colors, draw_rh_distn, mpl, my_colors, np, plt, score_fitness):
+def _(
+    colors,
+    draw_rh_distn,
+    mpl,
+    my_colors,
+    np,
+    p_over_p0_ticks,
+    plt,
+    score_fitness,
+):
     def draw_opt(best_wai, weather, savetag=""):
-        p_over_p0s = np.linspace(0, 1, 100)
+        p_over_p0s = np.linspace(0, best_wai.p_ovr_p0_max, 100)
 
         # fig, axs = plt.subplots(
         #     2, 2, 
@@ -1496,7 +1471,7 @@ def _(colors, draw_rh_distn, mpl, my_colors, np, plt, score_fitness):
         #   adsorption isotherm
         ###
         axs[1, 0].set_xlabel("$p / [p_0(T)]$")
-        axs[1, 0].set_xticks(np.linspace(0, 1, 6))
+        axs[1, 0].set_xticks(p_over_p0_ticks)
         axs[1, 0].set_ylabel("water adsorption [kg H$_2$O/kg MOF]")
 
         colormap = mpl.colormaps['coolwarm'] # or 'plasma', 'coolwarm', etc.
@@ -1519,7 +1494,7 @@ def _(colors, draw_rh_distn, mpl, my_colors, np, plt, score_fitness):
             sm, ax=cb_ax, label='temperature [°C]', 
             # orientation="horizontal"
         )
-        axs[1, 0].set_xlim(0, 1)
+        axs[1, 0].set_xlim(0, best_wai.p_ovr_p0_max)
         axs[1, 0].set_ylim(0, best_wai.w_max)
 
         ###
@@ -1562,7 +1537,6 @@ def _(colors, draw_rh_distn, mpl, my_colors, np, plt, score_fitness):
         )
 
         plt.show()
-
     return (draw_opt,)
 
 
@@ -1582,7 +1556,7 @@ def _(mo):
 
 
 @app.cell
-def _(WaterAdsorptionIsotherm, dim, np, score_fitness, weather):
+def _(WaterAdsorptionIsotherm, n, np, score_fitness, weather):
     def search_step_wais(dim):
         wais = [WaterAdsorptionIsotherm(dim) for i in range(dim-1)]
         for i_step in np.arange(1, dim):
@@ -1595,7 +1569,7 @@ def _(WaterAdsorptionIsotherm, dim, np, score_fitness, weather):
         opt_fitness = np.max(fitnesses)
         return wais, fitnesses, id_opt, opt_fitness
 
-    step_wais, step_fitnesses, id_opt_step, best_fitness_step = search_step_wais(dim*2)
+    step_wais, step_fitnesses, id_opt_step, best_fitness_step = search_step_wais(n)
     return best_fitness_step, id_opt_step, step_fitnesses, step_wais
 
 
@@ -1605,7 +1579,7 @@ def _(colors, id_opt_step, mpl, np, plt, step_fitnesses, step_wais, weather):
         Tref = step_wais[0].Tref
         w_max = step_wais[0].w_max
 
-        p_over_p0s = np.linspace(0, 1, 100)
+        p_over_p0s = np.linspace(0, step_wais[0].p_ovr_p0_max, 100)
 
         plt.figure()
 
@@ -1625,7 +1599,7 @@ def _(colors, id_opt_step, mpl, np, plt, step_fitnesses, step_wais, weather):
 
         sm = plt.cm.ScalarMappable(cmap=colormap, norm=norm)
         plt.colorbar(sm, ax=plt.gca(), label='fitness [kg H$_2$O/kg MOF]')
-        plt.xlim(0, 1)
+        plt.xlim(0, step_wais[0].p_ovr_p0_max)
         plt.ylim(0, w_max)
 
         plt.savefig(
