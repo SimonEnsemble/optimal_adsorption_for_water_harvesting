@@ -1,6 +1,6 @@
 import marimo
 
-__generated_with = "0.17.6"
+__generated_with = "0.20.2"
 app = marimo.App()
 
 
@@ -33,7 +33,19 @@ def _():
     # date format
     my_date_format_str = '%b-%d'
     my_date_format = mdates.DateFormatter(my_date_format_str)
-    return colors, math, mo, mpl, my_date_format, np, os, pd, plt, sns
+    return (
+        colors,
+        math,
+        mo,
+        mpl,
+        my_date_format,
+        np,
+        os,
+        pd,
+        plt,
+        sns,
+        warnings,
+    )
 
 
 @app.cell
@@ -139,13 +151,14 @@ def _(mo):
 def _(math):
     def bern_poly(x, v, n):
         return math.comb(n, v) * x ** v * (1.0 - x) ** (n - v)
+
     return (bern_poly,)
 
 
 @app.cell
 def _(bern_poly, colors, mpl, np, plt):
     class WaterAdsorptionIsotherm:
-        def __init__(self, n, Tref=25.0, w_max=0.5):
+        def __init__(self, n, Tref=25.0, w_max=0.5, bs=None):
             # number of control points
             self.n = n
 
@@ -156,8 +169,16 @@ def _(bern_poly, colors, mpl, np, plt):
             self.Tref = Tref
 
             # pre-allocate bs
-            self.bs = np.full(n + 1, np.nan)
-
+            if bs is None:
+                self.bs = np.full(n + 1, np.nan)
+            else:
+                self.bs = bs
+            
+        def copy(self):
+            return WaterAdsorptionIsotherm(
+                self.n, Tref=self.Tref, w_max=self.w_max, bs=np.copy(self.bs)
+            )
+        
         def endow_random_isotherm(self):
             self.bs[1:-1] = np.sort(np.random.rand(self.n - 1)) * self.w_max
             self.bs[0]  = 0.0 # start at zero
@@ -232,6 +253,7 @@ def _(bern_poly, colors, mpl, np, plt):
             plt.ylim(0, self.w_max)
 
             plt.show()
+
     return (WaterAdsorptionIsotherm,)
 
 
@@ -507,6 +529,7 @@ def _(city_to_state, fig_dir, my_date_format, np, os, pd, plt, time_to_color):
                   np.sum(self.raw_data["T_HR_AVG"] < -999.0)
             )
             self.raw_data = self.raw_data[self.raw_data["T_HR_AVG"] > -999.0]
+
     return (Weather,)
 
 
@@ -601,6 +624,7 @@ def _(np):
         water_dels = wai.water_del(weather.ads_des_conditions)
         # get worst-case water delivery, ignoring alpha % of hard cases.
         return np.percentile(water_dels, alpha)
+
     return (score_fitness,)
 
 
@@ -715,6 +739,7 @@ def _(draw_rh_distn, my_colors, np, plt, score_fitness):
         )
 
         plt.show()
+
     return (compare_wais,)
 
 
@@ -743,40 +768,311 @@ def _(mo):
     return
 
 
-@app.cell
-def _(WaterAdsorptionIsotherm, score_fitness):
-    # increase capacity at high pressure until fitness decreases
-    def top_off(best_wai, weather, verbose=False): 
-        new_best_wai = WaterAdsorptionIsotherm(best_wai.n)
-        new_best_wai.bs[:] = best_wai.bs
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## 🦋 evolutionary operations
+    """)
+    return
 
-        fitness = score_fitness(best_wai, weather)
+
+@app.cell
+def _(my_colors, np, plt):
+    def viz_wais(wais):
+        the_colors = [my_colors[0]] + my_colors[3:]
+        p_over_p0s = np.linspace(0, 1, 100)
+
+        fig = plt.figure()
+        plt.xlabel("$p / [p_0(T)]$")
+        plt.xticks(np.linspace(0, 1, 6))
+        plt.ylabel(
+            f"water adsorption at {wais[0].Tref:.0f}°C\n[kg H$_2$O/kg MOF]"
+        )
+
+        for w, wai in enumerate(wais):
+            plt.plot(
+                p_over_p0s, 
+                [wai.water_ads(wai.Tref, p_over_p0) for p_over_p0 in p_over_p0s],
+                color=the_colors[w],
+                label=f"#{w}"
+            )
+
+        plt.xlim(0, 1)
+        plt.ylim(0, wais[0].w_max)
+        plt.legend(title="model material", fontsize=8, title_fontsize=10)
+        plt.show()
+
+    return (viz_wais,)
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    random birth        wai = WaterAdsorptionIsotherm(dim)
+            if np.random.rand() < 0.5:
+                wai.endow_random_stepped_isotherm()
+            else:
+                wai.endow_random_isotherm()
+            new_wais.append(wai)
+    """)
+    return
+
+
+@app.cell
+def _(WaterAdsorptionIsotherm, np):
+    def random_birth(n):
+        wai = WaterAdsorptionIsotherm(n)
+        if np.random.rand() < 0.5:
+            wai.endow_random_stepped_isotherm()
+        else:
+            wai.endow_random_isotherm()
+        return wai
+
+    return (random_birth,)
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    mutation
+    """)
+    return
+
+
+@app.cell
+def _(np):
+    def mutate(wai, eps):
+        # perturb
+        delta_b = 2 * eps * np.sort(np.random.rand(wai.n - 1) - 0.5)
+        wai.bs[1:-1] += delta_b
+
+        # enforce constraint
+        wai.bs[wai.bs < 0.0] = 0.0
+        wai.bs[wai.bs > wai.w_max] = wai.w_max
+        wai.bs[-1] = wai.w_max
+
+    return (mutate,)
+
+
+@app.cell
+def _(WaterAdsorptionIsotherm, mutate, viz_wais):
+    _wais = [WaterAdsorptionIsotherm(10)]
+    _wais[0].endow_random_isotherm()
+    _wais.append(_wais[0].copy())
+    mutate(_wais[1], 0.05)
+    viz_wais(_wais)
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    tournament selection        ids_tourney = np.random.choice(
+                range(pop_size), size=tourney_size, replace=False
+            )
+
+            # compete for top two (= the chosen parents)
+            ids_winners = np.argpartition(fitnesses[ids_tourney], -2)[-2:]
+            id_a = ids_tourney[ids_winners[0]]
+            id_b = ids_tourney[ids_winners[1]]
+    """)
+    return
+
+
+@app.cell
+def _(np):
+    def run_tournament(fitnesses, tourney_size):
+        ids_tourney = np.random.choice(
+            np.size(fitnesses), size=tourney_size, replace=False
+        )
+
+        # compete for top two (= the chosen parents)
+        ids_winners = np.argpartition(fitnesses[ids_tourney], -2)[-2:]
+        id_a = ids_tourney[ids_winners[0]]
+        id_b = ids_tourney[ids_winners[1]]
+        return id_a, id_b
+
+    return (run_tournament,)
+
+
+@app.cell
+def _(np, run_tournament):
+    run_tournament(np.arange(10), 5)
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    combination
+    """)
+    return
+
+
+@app.cell
+def _(WaterAdsorptionIsotherm, np):
+    def random_combination(wai_a, wai_b):
+        alpha = np.random.rand() # fraction of genes of parent a
+    
+        return WaterAdsorptionIsotherm(
+            wai_a.n, bs=alpha * wai_a.bs + (1 - alpha) * wai_b.bs
+        )
+
+    return (random_combination,)
+
+
+@app.cell
+def _(WaterAdsorptionIsotherm, random_combination, viz_wais):
+    _rand_wais = [WaterAdsorptionIsotherm(10), WaterAdsorptionIsotherm(10)]
+    _rand_wais[0].endow_stepped_isotherm(4)
+    _rand_wais[1].endow_stepped_isotherm(8)
+    _rand_wais.append(random_combination(_rand_wais[0], _rand_wais[1]))
+    viz_wais(_rand_wais)
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    cross-over
+    """)
+    return
+
+
+@app.cell
+def _(np):
+    def random_cross_over(wai_a, wai_b, random_switch=True):
+        # change up which gives left and right portion of isotherm
+        if random_switch:
+            if np.random.rand() < 0.5:
+                return random_cross_over(wai_b, wai_a, random_switch=False)
+
+        # swap point
+        id = np.random.choice(range(wai_a.n))
+
+        wai = wai_a.copy()               # wai_a gives left side
+        wai.bs[id:] = wai_b.bs[id:]  # wai_b gives right side
+
+        # enforce monotonicity
+        wai.bs = np.sort(wai.bs)
+    
+        return wai
+
+    return (random_cross_over,)
+
+
+@app.cell
+def _(WaterAdsorptionIsotherm, random_cross_over, viz_wais):
+    _rand_wais = [WaterAdsorptionIsotherm(10), WaterAdsorptionIsotherm(10)]
+    _rand_wais[0].endow_stepped_isotherm(2)
+    _rand_wais[1].endow_random_isotherm()
+
+    _rand_wais.append(random_cross_over(_rand_wais[0], _rand_wais[1]))
+    viz_wais(_rand_wais)
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    local search through stepify
+    """)
+    return
+
+
+@app.cell
+def _(wai):
+    wai.bs
+    return
+
+
+@app.cell
+def _(wai):
+    wai.bs[:1]
+    return
+
+
+@app.cell
+def _(score_fitness):
+    # increase capacity at high pressure until fitness decreases
+    # decrease capacity at low pressure until fitness decreases
+    def ls_stepify(wai, weather, verbose=False): 
+        new_wai = wai.copy()
+
+        fitness = score_fitness(wai, weather)
         if verbose:
-            print("---topping off---")
+            print("---local search---")
             print("current fitness: ", fitness)
 
-        for i in range(1, best_wai.n): # walk backwards thru array
-            new_best_wai.bs[-i:] = best_wai.w_max
-            new_fitness = score_fitness(new_best_wai, weather)
+        # max out capacity at high p/p0 until fitness decreases
+        for i in range(1, wai.n): # walk backwards thru array
+            new_wai.bs[-i:] = wai.w_max
+            new_fitness = score_fitness(new_wai, weather)
             if verbose:
                 print("new fitness: ", new_fitness)
 
             if new_fitness >= fitness: # OR EQUAL TO (important)
                 if verbose:
                     print(
-                        "increased uptake at high p/p0 w./o decrease in fitness."
+                        "maxed out uptake at high p/p0 w./o decrease in fitness."
                     )
                     print("\tnew fitness: ", new_fitness)
-                best_wai.bs[:] = new_best_wai.bs
+                wai.bs[:] = new_wai.bs
                 fitness = new_fitness
             else:
-                return
-        return   
-    return (top_off,)
+                break 
+            
+        # destroy capacity at low p/p0 until fitness decreases
+        for i in range(1, wai.n): # walk forwards thru array
+            new_wai.bs[:i] = 0.0
+            new_fitness = score_fitness(new_wai, weather)
+            if verbose:
+                print("new fitness: ", new_fitness)
+
+            if new_fitness >= fitness: # OR EQUAL TO (important)
+                if verbose:
+                    print(
+                        "zeroed uptake at low p/p0 w./o decrease in fitness."
+                    )
+                    print("\tnew fitness: ", new_fitness)
+                wai.bs[:] = new_wai.bs
+                fitness = new_fitness
+            else:
+                break 
+
+    return (ls_stepify,)
 
 
 @app.cell
-def _(WaterAdsorptionIsotherm, np, score_fitness, top_off):
+def _(WaterAdsorptionIsotherm, ls_stepify, viz_wais, weather):
+    _wai = WaterAdsorptionIsotherm(20)
+    _wai.endow_random_isotherm()
+    _wai2 = _wai.copy()
+    ls_stepify(_wai2, weather, verbose=True)
+    viz_wais([_wai, _wai2])
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## evolution step
+    """)
+    return
+
+
+@app.cell
+def _(
+    ls_stepify,
+    mutate,
+    np,
+    random_birth,
+    random_combination,
+    random_cross_over,
+    run_tournament,
+    score_fitness,
+    warnings,
+):
     def evolve(
         wais, weather, n_elite=5, tourney_size=10, 
         n_rand=15, n_mutate=15, eps=0.05, verbose=False
@@ -796,69 +1092,54 @@ def _(WaterAdsorptionIsotherm, np, score_fitness, top_off):
         # which are the elite individuals?
         ids_elite = np.argpartition(fitnesses, -n_elite)[-n_elite:]
 
+        if np.all(fitnesses[ids_elite[0]] == fitnesses[ids_elite]):
+            warnings.warn("elite class all same fitness!")
+
         if verbose:
             print("initial generation")
             print("\telite fitness: ", fitnesses[ids_elite])
 
         # initiate new generation with the elite individuals un-modified
         new_wais = [wais[i_elite] for i_elite in ids_elite]
+        # local search
         for elite_wai in new_wais:
-            top_off(elite_wai, weather)
+            if np.random.rand() < 0.2:
+                ls_stepify(elite_wai, weather)
 
         # tournament selection
         for i in range(pop_size - n_elite - n_rand):
-            # pick individuals for tournament
-            ids_tourney = np.random.choice(
-                range(pop_size), size=tourney_size, replace=False
-            )
-
-            # compete for top two (= the chosen parents)
-            ids_winners = np.argpartition(fitnesses[ids_tourney], -2)[-2:]
-            id_a = ids_tourney[ids_winners[0]]
-            id_b = ids_tourney[ids_winners[1]]
+            id_a, id_b = run_tournament(fitnesses, tourney_size)
 
             # mate to produce child
-            wai = WaterAdsorptionIsotherm(dim)
-            alpha = np.random.rand() # fraction of genes of parent a
-            wai.bs = alpha * wais[id_a].bs + (1 - alpha) * wais[id_b].bs
-            new_wais.append(wai)
+            if np.random.rand() < 0.5:
+                new_wai = random_cross_over(wais[id_a], wais[id_b])
+            else:
+                new_wai = random_combination(wais[id_a], wais[id_b])
+        
+            new_wais.append(new_wai)
 
         # random births for exploration
         for i in range(n_rand):
-            wai = WaterAdsorptionIsotherm(dim)
-            if np.random.rand() < 0.5:
-                wai.endow_random_stepped_isotherm()
-            else:
-                wai.endow_random_isotherm()
-            new_wais.append(wai)
+            new_wais.append(
+                random_birth(dim)
+            )
 
         # mutation
         for i in range(n_mutate):
             # select non-elite individual to mutate
             id = np.random.choice(np.arange(n_elite, pop_size))
-
-            # mutation
-            delta_b = 2 * eps * np.sort(np.random.rand(dim - 1) - 0.5)
-
-            new_wais[id].bs[1:-1] += delta_b
-            new_wais[id].bs[new_wais[id].bs < 0.0] = 0.0
-            new_wais[id].bs[new_wais[id].bs > w_max] = w_max
-            new_wais[id].bs[-1] = w_max
+            mutate(new_wais[id], eps)
 
         return new_wais
+
     return (evolve,)
 
 
 @app.cell
-def _(WaterAdsorptionIsotherm, np):
-    def gen_initial_pop(pop_size, dim):
-        wais = [WaterAdsorptionIsotherm(dim) for _ in range(pop_size)]
-        for wai in wais:
-            if np.random.rand() < 0.5:
-                wai.endow_random_stepped_isotherm()
-            else:
-                wai.endow_random_isotherm()
-        return wais
+def _(random_birth):
+    def gen_initial_pop(pop_size, n):
+        return [random_birth(n) for _ in range(pop_size)]
+
     return (gen_initial_pop,)
 
 
@@ -917,6 +1198,7 @@ def _(evolve, gen_initial_pop, np, score_fitness):
         best_fitness = np.max(fitnesses)
 
         return fitnesses_gen, best_wai_gen, best_wai, best_fitness
+
     return (do_evolution,)
 
 
@@ -924,7 +1206,7 @@ def _(evolve, gen_initial_pop, np, score_fitness):
 def _(do_evolution, run_evol_cbox, weather):
     if run_evol_cbox.value:
         pop_size = 50
-        n_generations = 15
+        n_generations = 25
         dim = 30
         fitnesses_gen, best_wai_gen, best_wai, best_fitness = do_evolution(
             weather, n_generations, pop_size, dim
@@ -1030,7 +1312,7 @@ def _(best_wai, np, plt, sns, weather):
         conditions["water delivery [kg H$_2$O/kg MOF]"] = wai.water_del(
             weather.ads_des_conditions
         )
-    
+
         # Initialize the grid
         pp = sns.PairGrid(
             conditions, hue="water delivery [kg H$_2$O/kg MOF]", corner=True
@@ -1038,7 +1320,7 @@ def _(best_wai, np, plt, sns, weather):
 
         # Map only to the off-diagonal (lower) plots
         pp.map_lower(sns.scatterplot)
-    
+
         # Optional: Add a legend since we are using PairGrid manually
         handles, labels = pp.axes[1, 0].get_legend_handles_labels()
 
@@ -1098,7 +1380,7 @@ def _(np, time_to_color):
             bins=p_over_p0_bins, 
             color=time_to_color["night"], alpha=0.25
         )
-    
+
         ax.hist(
             weather.ads_des_conditions["ads P/P0"], 
             label="release", histtype='step',
@@ -1114,6 +1396,7 @@ def _(np, time_to_color):
         ax.set_yticks([0, 100, 200])
         ax.set_ylim(0, 200)
         ax.legend(fontsize=12)
+
     return (draw_rh_distn,)
 
 
@@ -1210,6 +1493,7 @@ def _(colors, draw_rh_distn, mpl, my_colors, np, plt, score_fitness):
         )
 
         plt.show()
+
     return (draw_opt,)
 
 
