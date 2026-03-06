@@ -1,6 +1,6 @@
 import marimo
 
-__generated_with = "0.20.2"
+__generated_with = "0.17.6"
 app = marimo.App()
 
 
@@ -232,11 +232,11 @@ def _(city_to_state, fig_dir, my_date_format, np, os, pd, plt, time_to_color):
         def _remove_rainy_days(self):
             print("removing rainy days")
             rain_group_by_day = self.raw_data.groupby("LST_DATE")["P_CALC"]
-        
+
             print("\t# rainy days: ", (rain_group_by_day.sum() > 0.0).sum())
-        
+
             ids = rain_group_by_day.transform("sum") == 0.0
-        
+
             self.raw_data = self.raw_data[ids]
 
         def _process_datetime_and_filter(self):
@@ -440,7 +440,6 @@ def _(city_to_state, fig_dir, my_date_format, np, os, pd, plt, time_to_color):
                   np.sum(self.raw_data["T_HR_AVG"] < -999.0)
             )
             self.raw_data = self.raw_data[self.raw_data["T_HR_AVG"] > -999.0]
-
     return (Weather,)
 
 
@@ -470,9 +469,9 @@ def _(my_colors, plt, sns, weather):
             'ads P/P0': 'capture $p/p_0(T)$',
             'des P/P0': 'release $p/p_0(T)$',
         }
-    
+
         weather_cols = ['ads P/P0', 'ads T [°C]', 'des P/P0', 'des T [°C]']
-    
+
         pp = sns.pairplot(
             weather.ads_des_conditions.rename(
                 columns=short_to_proper_weather_cols
@@ -483,13 +482,13 @@ def _(my_colors, plt, sns, weather):
             diag_kws=dict(fill=False, color=my_colors[0]),
             diag_kind='kde'
         )
-    
+
 
         def set_weather_cols_axis(pp):
             for r in [1, 3]:
                 pp.axes[r, 0].set_ylim(weather.T_range)
                 pp.axes[r, 0].set_yticks(weather.T_ticks)
-        
+
             pp.axes[2, 0].set_ylim(0, weather.p_ovr_p0_max)
             pp.axes[2, 0].set_yticks(weather.p_ovr_p0_ticks)
             for c in [0, 2]:
@@ -500,7 +499,7 @@ def _(my_colors, plt, sns, weather):
                 pp.axes[3, c].set_xticks(weather.T_ticks)
 
         set_weather_cols_axis(pp)
-    
+
         plt.tight_layout()
         plt.savefig(
             weather.save_tag + "ads_des_conditions.pdf", 
@@ -530,7 +529,6 @@ def _(weather):
 def _(math):
     def bern_poly(x, v, n):
         return math.comb(n, v) * x ** v * (1.0 - x) ** (n - v)
-
     return (bern_poly,)
 
 
@@ -646,7 +644,6 @@ def _(bern_poly, colors, mpl, np, p_over_p0_max, plt):
             plt.ylim(0, self.w_max)
 
             plt.show()
-
     return (WaterAdsorptionIsotherm,)
 
 
@@ -682,7 +679,6 @@ def _(np):
         water_dels = wai.water_del(weather.ads_des_conditions)
         # get worst-case water delivery, ignoring alpha % of hard cases.
         return np.percentile(water_dels, alpha)
-
     return (score_fitness,)
 
 
@@ -797,7 +793,6 @@ def _(draw_rh_distn, my_colors, np, p_over_p0_ticks, plt, score_fitness):
         )
 
         plt.show()
-
     return (compare_wais,)
 
 
@@ -868,7 +863,6 @@ def _(my_colors, np, p_over_p0_ticks, plt):
                 savename + ".pdf", format="pdf",  bbox_inches="tight"
             )
         plt.show()
-
     return (viz_wais,)
 
 
@@ -894,7 +888,6 @@ def _(WaterAdsorptionIsotherm, np):
         else:
             wai.endow_random_isotherm()
         return wai
-
     return (random_birth,)
 
 
@@ -925,7 +918,6 @@ def _(np):
         wai.bs[wai.bs < 0.0] = 0.0
         wai.bs[wai.bs > wai.w_max] = wai.w_max
         wai.bs[-1] = wai.w_max
-
     return (mutate,)
 
 
@@ -959,7 +951,6 @@ def _(np):
         id_a = ids_tourney[ids_winners[0]]
         id_b = ids_tourney[ids_winners[1]]
         return id_a, id_b
-
     return (run_tournament,)
 
 
@@ -985,7 +976,6 @@ def _(WaterAdsorptionIsotherm, np):
         return WaterAdsorptionIsotherm(
             wai_a.n, bs=alpha * wai_a.bs + (1 - alpha) * wai_b.bs
         )
-
     return (random_combination,)
 
 
@@ -1029,7 +1019,6 @@ def _(np):
         wai.bs = np.sort(wai.bs)
 
         return wai
-
     return (random_cross_over,)
 
 
@@ -1103,7 +1092,6 @@ def _(score_fitness):
                 fitness = new_fitness
             else:
                 break 
-
     return (ls_stepify,)
 
 
@@ -1199,7 +1187,6 @@ def _(
             mutate(new_wais[id], eps)
 
         return new_wais
-
     return (evolve,)
 
 
@@ -1207,7 +1194,6 @@ def _(
 def _(random_birth):
     def gen_initial_pop(pop_size, n):
         return [random_birth(n) for _ in range(pop_size)]
-
     return (gen_initial_pop,)
 
 
@@ -1274,7 +1260,6 @@ def _(evolve, gen_initial_pop, np, score_fitness):
         best_fitness = np.max(fitnesses)
 
         return fitnesses_gen, best_wai_gen, best_wai, best_fitness
-
     return (do_evolution,)
 
 
@@ -1282,7 +1267,7 @@ def _(evolve, gen_initial_pop, np, score_fitness):
 def _(do_evolution, run_evol_cbox, weather):
     pop_size = 50
     n_generations = 25
-    n = 30
+    n = 35
     if run_evol_cbox.value:
         fitnesses_gen, best_wai_gen, best_wai, best_fitness = do_evolution(
             weather, n_generations, pop_size, n
@@ -1386,17 +1371,21 @@ def _(mo):
 
 
 @app.function
-def get_performance_data(wai, weather):
-    performance_data = weather.ads_des_conditions.copy()
-    performance_data["water del [kg H$_2$O/kg MOF]"] = wai.water_del(
+def get_performance_data(wai, weather, w_low=0.15):
+    perf_data = weather.ads_des_conditions.copy()
+    perf_data["water del [kg H$_2$O/kg MOF]"] = wai.water_del(
         weather.ads_des_conditions
     )
-    return performance_data
+    perf_data["failure"] = perf_data.apply(
+        lambda row: row["water del [kg H$_2$O/kg MOF]"] < w_low, axis=1
+    )
+    print(f"# failures: ", perf_data["failure"].sum(), " / ", perf_data.shape[0])
+    return perf_data
 
 
 @app.cell
 def _(best_wai, weather):
-    opt_performance_data = get_performance_data(best_wai, weather)
+    opt_performance_data = get_performance_data(best_wai, weather, w_low=0.1)
     opt_performance_data
     return (opt_performance_data,)
 
@@ -1409,59 +1398,6 @@ def _(best_wai, plt, weather):
         weather.save_tag + "best_wai.pdf", format="pdf"
     )
     plt.show()
-    return
-
-
-@app.cell
-def _(
-    opt_performance_data,
-    plt,
-    set_weather_cols_axis,
-    short_to_proper_weather_cols,
-    sns,
-    weather,
-    weather_cols,
-):
-    def viz_daily_performance(performance_data):
-        cols_to_plot = weather_cols + ["water delivery [kg H$_2$O/kg MOF]"]
-
-        # Initialize the grid
-        pp = sns.PairGrid(
-            performance_data.rename(
-                columns=short_to_proper_weather_cols
-            ),
-            vars=[short_to_proper_weather_cols[w] for w in weather_cols],
-            hue="water del [kg H$_2$O/kg MOF]", 
-            corner=True
-        )
-
-        # Map only to the off-diagonal (lower) plots
-        pp.map_lower(sns.scatterplot)
-
-        # Optional: Add a legend since we are using PairGrid manually
-        handles, labels = pp.axes[1, 0].get_legend_handles_labels()
-
-        pp.fig.legend(
-            handles, 
-            labels,
-            title="water del [kg H$_2$O/kg MOF]",
-            loc="upper right", 
-            bbox_to_anchor=(0.8, 0.8) 
-        )
-
-        set_weather_cols_axis(pp)
-
-        for i in range(4):
-            pp.axes[i, i].set_visible(False)
-
-        plt.savefig(
-            weather.save_tag + "daily_performance.pdf", format="pdf",
-            bbox_inches="tight"
-        )
-
-        plt.show()
-
-    viz_daily_performance(opt_performance_data)
     return
 
 
@@ -1495,7 +1431,6 @@ def _(np, time_to_color):
         ax.set_yticks([0, 100, 200])
         ax.set_ylim(0, 200)
         ax.legend(fontsize=12)
-
     return (draw_rh_distn,)
 
 
@@ -1602,13 +1537,73 @@ def _(
         )
 
         plt.show()
-
     return (draw_opt,)
 
 
 @app.cell
 def _(best_wai, draw_opt, weather):
     draw_opt(best_wai, weather)
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ### inspect day-to-day performance
+    """)
+    return
+
+
+@app.cell
+def _(
+    opt_performance_data,
+    plt,
+    set_weather_cols_axis,
+    short_to_proper_weather_cols,
+    sns,
+    weather,
+    weather_cols,
+):
+    def viz_daily_performance(performance_data):
+        cols_to_plot = weather_cols + ["water delivery [kg H$_2$O/kg MOF]"]
+
+        # Initialize the grid
+        pp = sns.PairGrid(
+            performance_data.rename(
+                columns=short_to_proper_weather_cols
+            ),
+            vars=[short_to_proper_weather_cols[w] for w in weather_cols],
+            hue="water del [kg H$_2$O/kg MOF]", 
+            corner=True
+        )
+
+        # Map only to the off-diagonal (lower) plots
+        pp.map_lower(sns.scatterplot)
+
+        # Optional: Add a legend since we are using PairGrid manually
+        handles, labels = pp.axes[1, 0].get_legend_handles_labels()
+
+        pp.fig.legend(
+            handles, 
+            labels,
+            title="water del [kg H$_2$O/kg MOF]",
+            loc="upper right", 
+            bbox_to_anchor=(0.8, 0.8) 
+        )
+
+        set_weather_cols_axis(pp)
+
+        for i in range(4):
+            pp.axes[i, i].set_visible(False)
+
+        plt.savefig(
+            weather.save_tag + "daily_performance.pdf", format="pdf",
+            bbox_inches="tight"
+        )
+
+        plt.show()
+
+    viz_daily_performance(opt_performance_data)
     return
 
 
@@ -1635,7 +1630,7 @@ def _(colors, mpl, np, p_over_p0_ticks, plt):
         # capture conditions
         T_night, p_ovr_p0_night = day_data["ads T [°C]"], day_data["ads P/P0"]
         w_night = wai.water_ads(T_night, p_ovr_p0_night)
-    
+
         # release conditions
         T_day, p_ovr_p0_day = day_data["des T [°C]"], day_data["des P/P0"]
         w_day = wai.water_ads(T_day, p_ovr_p0_day)
@@ -1677,13 +1672,40 @@ def _(colors, mpl, np, p_over_p0_ticks, plt):
 
         plt.legend()
         plt.show()
-
     return (viz_water_del,)
 
 
 @app.cell
 def _(best_wai, datetime, viz_water_del, weather):
     viz_water_del(best_wai, weather, datetime.date(2025, 7, 1))
+    return
+
+
+@app.cell(hide_code=True)
+def _(failures, mo):
+    failure_explorer = mo.ui.slider(
+        start=0, stop=failures.shape[0]-1, label="failure ID"
+    )
+    failure_explorer
+    return (failure_explorer,)
+
+
+@app.cell
+def _(opt_performance_data):
+    failures = opt_performance_data.groupby("failure").get_group(True)
+    failures
+    return (failures,)
+
+
+@app.cell
+def _(best_wai, failure_explorer, failures, viz_water_del, weather):
+    viz_water_del(best_wai, weather, failures.iloc[failure_explorer.value]["date"].date())
+    return
+
+
+@app.cell
+def _(opt_performance_data):
+    opt_performance_data
     return
 
 
@@ -1708,10 +1730,17 @@ def _(WaterAdsorptionIsotherm, n, np, score_fitness, weather):
         )
         id_opt = np.argmax(fitnesses)
         opt_fitness = np.max(fitnesses)
-        return wais, fitnesses, id_opt, opt_fitness
+        wai_opt_step = wais[id_opt]
+        return wais, fitnesses, id_opt, wai_opt_step, opt_fitness
 
-    step_wais, step_fitnesses, id_opt_step, best_fitness_step = search_step_wais(n)
-    return best_fitness_step, id_opt_step, step_fitnesses, step_wais
+    step_wais, step_fitnesses, id_opt_step, wai_opt_step, best_fitness_step = search_step_wais(n*2)
+    return (
+        best_fitness_step,
+        id_opt_step,
+        step_fitnesses,
+        step_wais,
+        wai_opt_step,
+    )
 
 
 @app.cell
@@ -1764,8 +1793,35 @@ def _(best_fitness, best_fitness_step):
 
 
 @app.cell
-def _(draw_opt, id_opt_step, step_wais, weather):
-    draw_opt(step_wais[id_opt_step], weather, savetag="baseline")
+def _(draw_opt, wai_opt_step, weather):
+    draw_opt(wai_opt_step, weather, savetag="baseline")
+    return
+
+
+@app.cell
+def _(wai_opt_step, weather):
+    opt_performance_step = get_performance_data(wai_opt_step, weather, w_low=0.1)
+    opt_performance_step
+    return (opt_performance_step,)
+
+
+@app.cell
+def _(opt_performance_step):
+    step_failures = opt_performance_step.groupby("failure").get_group(True)
+    step_failures
+    return (step_failures,)
+
+
+@app.cell
+def _(step_failures, viz_water_del, wai_opt_step, weather):
+    viz_water_del(
+        wai_opt_step, weather, step_failures.iloc[0]["date"].date()
+    )
+    return
+
+
+@app.cell
+def _():
     return
 
 
