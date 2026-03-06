@@ -447,8 +447,8 @@ def _(city_to_state, fig_dir, my_date_format, np, os, pd, plt, time_to_color):
 def _(Weather):
     # weather = Weather([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], 2025, "Mercury")
     mos_of_year = list(range(1, 13))
-    # weather = Weather(mos_of_year, 2025, "Stovepipe")
-    weather = Weather([7], 2025, "Stovepipe")
+    weather = Weather(mos_of_year, 2025, "Stovepipe")
+    # weather = Weather([7], 2025, "Stovepipe")
     # weather = Weather(mos_of_year, 2025, "Mercury")
 
 
@@ -1267,7 +1267,7 @@ def _(evolve, gen_initial_pop, np, score_fitness):
 def _(do_evolution, run_evol_cbox, weather):
     pop_size = 50
     n_generations = 25
-    n = 35
+    n = 30
     if run_evol_cbox.value:
         fitnesses_gen, best_wai_gen, best_wai, best_fitness = do_evolution(
             weather, n_generations, pop_size, n
@@ -1733,7 +1733,7 @@ def _(WaterAdsorptionIsotherm, n, np, score_fitness, weather):
         wai_opt_step = wais[id_opt]
         return wais, fitnesses, id_opt, wai_opt_step, opt_fitness
 
-    step_wais, step_fitnesses, id_opt_step, wai_opt_step, best_fitness_step = search_step_wais(n*2)
+    step_wais, step_fitnesses, id_opt_step, wai_opt_step, best_fitness_step = search_step_wais(n*3)
     return (
         best_fitness_step,
         id_opt_step,
@@ -1800,7 +1800,7 @@ def _(draw_opt, wai_opt_step, weather):
 
 @app.cell
 def _(wai_opt_step, weather):
-    opt_performance_step = get_performance_data(wai_opt_step, weather, w_low=0.1)
+    opt_performance_step = get_performance_data(wai_opt_step, weather, w_low=0.05)
     opt_performance_step
     return (opt_performance_step,)
 
@@ -1813,9 +1813,25 @@ def _(opt_performance_step):
 
 
 @app.cell
-def _(step_failures, viz_water_del, wai_opt_step, weather):
+def _(mo, step_failures):
+    step_failure_explorer = mo.ui.slider(
+        start=0, stop=step_failures.shape[0] - 1, label="failure ID"
+    )
+    step_failure_explorer
+    return (step_failure_explorer,)
+
+
+@app.cell
+def _(
+    step_failure_explorer,
+    step_failures,
+    viz_water_del,
+    wai_opt_step,
+    weather,
+):
     viz_water_del(
-        wai_opt_step, weather, step_failures.iloc[0]["date"].date()
+        wai_opt_step, weather, 
+        step_failures.iloc[step_failure_explorer.value]["date"].date()
     )
     return
 
