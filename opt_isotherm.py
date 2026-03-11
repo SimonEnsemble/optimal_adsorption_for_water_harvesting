@@ -1,6 +1,6 @@
 import marimo
 
-__generated_with = "0.17.6"
+__generated_with = "0.20.4"
 app = marimo.App()
 
 
@@ -75,7 +75,7 @@ def _(os):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    # modeling the vapor pressure of water
+    # 🌧️ modeling the vapor pressure of water
     """)
     return
 
@@ -100,7 +100,7 @@ def water_p0(T):
         B = 1838.675
         C = -31.737
     # T in [255.9, 373.] K
-    elif T+273.15 > 255.9 and T+273.15 < 373.0: # low temp
+    elif (T+273.15 > 255.9 and T+273.15 < 373.0) or T < 255.9: # low temp
         A = 4.6543
         B = 1435.264
         C = -64.848
@@ -109,6 +109,8 @@ def water_p0(T):
         A = 3.55959
         B = 643.748
         C = -198.043
+    else:
+        raise Exception(f"T {T} not covered!")
 
     return 10.0 ** (A - B / ((T + 273.15) + C))
 
@@ -148,7 +150,7 @@ def _(mo):
 
     NOAA hourly data [here](https://www.ncei.noaa.gov/access/crn/products.html).
 
-    no need to pre-process now.
+    (download directly; place in `data` subfolder.)
     """)
     return
 
@@ -160,7 +162,9 @@ def _():
         'Socorro': 'NM', 
         'Utqiagvik': 'AK', 
         'Mercury': 'NV', 
-        'Stovepipe': 'CA'
+        'Stovepipe': 'CA',
+        'Riley': 'OR',
+        'Yuma': 'AZ'
     }
     return (city_to_state,)
 
@@ -440,24 +444,46 @@ def _(city_to_state, fig_dir, my_date_format, np, os, pd, plt, time_to_color):
                   np.sum(self.raw_data["T_HR_AVG"] < -999.0)
             )
             self.raw_data = self.raw_data[self.raw_data["T_HR_AVG"] > -999.0]
+
     return (Weather,)
+
+
+@app.cell
+def _():
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## choose regions
+    * Mercury, NV. Mojave Desert.
+    * Yuma, AZ. Sonoran Desert.
+    * Riely, OR. "high desert"
+    """)
+    return
 
 
 @app.cell
 def _(Weather):
     # weather = Weather([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], 2025, "Mercury")
-    mos_of_year = list(range(1, 13))
-    weather = Weather(mos_of_year, 2025, "Stovepipe")
-    # weather = Weather([7], 2025, "Stovepipe")
-    # weather = Weather(mos_of_year, 2025, "Mercury")
+    # weather = Weather(range(5, 10), 2025, "Riley")  # step optimal at 0.262
+    # weather = Weather(range(5, 10), 2025, "Yuma") # step optimal at 0.074
+    # weather = Weather(range(5, 10), 2025, "Mercury") # step optimal at 0.106
+    # weather = Weather(range(5, 10), 2025, "Stovepipe") # step optimal at 0.0519
+    # weather = Weather(range(5, 11), 2025, "Utqiagvik") # step marginally optimal at very high humdity
 
-
-    # weather = Weather([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], 2025, "Utqiagvik")
-
-    # weather = Weather([6, 7, 8], 2025, "Utqiagvik")
+    # weather = Weather(range(1, 13), 2025, "Mercury") # step not optimal
+    weather = Weather(range(5, 10), 2025, "Stovepipe") # step not optimal
     weather.ads_des_conditions
     # weather.raw_data
     return (weather,)
+
+
+@app.cell
+def _(weather):
+    weather.viz_timeseries(save=True)
+    return
 
 
 @app.cell
@@ -512,7 +538,7 @@ def _(my_colors, plt, sns, weather):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    # modeling a water adsorption isotherm in a MOF bed
+    # 🛏️ modeling a water adsorption isotherm in a MOF bed
     """)
     return
 
@@ -529,6 +555,7 @@ def _(weather):
 def _(math):
     def bern_poly(x, v, n):
         return math.comb(n, v) * x ** v * (1.0 - x) ** (n - v)
+
     return (bern_poly,)
 
 
@@ -619,6 +646,20 @@ def _(bern_poly, colors, mpl, np, p_over_p0_max, plt):
             plt.xlabel("water delivery")
             plt.show()
 
+        def get_p_ovr_p0_half_max(self, verbose=False):
+            p_over_p0s = np.linspace(0, self.p_ovr_p0_max, 500)
+            ws = np.array(
+                [
+                    self.water_ads(self.Tref, p_over_p0)
+                    for p_over_p0 in p_over_p0s
+                ]
+            )
+            id = np.argmax(ws > self.w_max / 2)
+            p_star = p_over_p0s[id]
+            if verbose:
+                print(f"ads at T={self.Tref}deg C half max at p/p0 = ", p_star)
+            return p_star
+
         def draw(self):
             p_over_p0s = np.linspace(0, self.p_ovr_p0_max, 100)
 
@@ -644,7 +685,14 @@ def _(bern_poly, colors, mpl, np, p_over_p0_max, plt):
             plt.ylim(0, self.w_max)
 
             plt.show()
+
     return (WaterAdsorptionIsotherm,)
+
+
+@app.cell
+def _(np):
+    np.where(np.random.rand(10) > 0.3)
+    return
 
 
 @app.cell
@@ -655,12 +703,6 @@ def _(WaterAdsorptionIsotherm, plt):
     plt.tight_layout()
     plt.show()
     return (wai,)
-
-
-@app.cell
-def _(weather):
-    weather.viz_timeseries(save=True)
-    return
 
 
 @app.cell(hide_code=True)
@@ -679,6 +721,7 @@ def _(np):
         water_dels = wai.water_del(weather.ads_des_conditions)
         # get worst-case water delivery, ignoring alpha % of hard cases.
         return np.percentile(water_dels, alpha)
+
     return (score_fitness,)
 
 
@@ -708,7 +751,7 @@ def _(fitness, p_over_p0_max, plt, wai, weather):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    # random WAIs to explore
+    # 🎲 random WAIs to explore
     """)
     return
 
@@ -793,6 +836,7 @@ def _(draw_rh_distn, my_colors, np, p_over_p0_ticks, plt, score_fitness):
         )
 
         plt.show()
+
     return (compare_wais,)
 
 
@@ -816,7 +860,7 @@ def _(WaterAdsorptionIsotherm, compare_wais, np, score_fitness, weather):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    # evolutionary optimization
+    # 🍃 evolutionary optimization
     """)
     return
 
@@ -863,6 +907,7 @@ def _(my_colors, np, p_over_p0_ticks, plt):
                 savename + ".pdf", format="pdf",  bbox_inches="tight"
             )
         plt.show()
+
     return (viz_wais,)
 
 
@@ -888,6 +933,7 @@ def _(WaterAdsorptionIsotherm, np):
         else:
             wai.endow_random_isotherm()
         return wai
+
     return (random_birth,)
 
 
@@ -918,6 +964,7 @@ def _(np):
         wai.bs[wai.bs < 0.0] = 0.0
         wai.bs[wai.bs > wai.w_max] = wai.w_max
         wai.bs[-1] = wai.w_max
+
     return (mutate,)
 
 
@@ -951,6 +998,7 @@ def _(np):
         id_a = ids_tourney[ids_winners[0]]
         id_b = ids_tourney[ids_winners[1]]
         return id_a, id_b
+
     return (run_tournament,)
 
 
@@ -976,6 +1024,7 @@ def _(WaterAdsorptionIsotherm, np):
         return WaterAdsorptionIsotherm(
             wai_a.n, bs=alpha * wai_a.bs + (1 - alpha) * wai_b.bs
         )
+
     return (random_combination,)
 
 
@@ -1019,6 +1068,7 @@ def _(np):
         wai.bs = np.sort(wai.bs)
 
         return wai
+
     return (random_cross_over,)
 
 
@@ -1092,6 +1142,7 @@ def _(score_fitness):
                 fitness = new_fitness
             else:
                 break 
+
     return (ls_stepify,)
 
 
@@ -1187,6 +1238,7 @@ def _(
             mutate(new_wais[id], eps)
 
         return new_wais
+
     return (evolve,)
 
 
@@ -1194,6 +1246,7 @@ def _(
 def _(random_birth):
     def gen_initial_pop(pop_size, n):
         return [random_birth(n) for _ in range(pop_size)]
+
     return (gen_initial_pop,)
 
 
@@ -1260,6 +1313,7 @@ def _(evolve, gen_initial_pop, np, score_fitness):
         best_fitness = np.max(fitnesses)
 
         return fitnesses_gen, best_wai_gen, best_wai, best_fitness
+
     return (do_evolution,)
 
 
@@ -1431,6 +1485,7 @@ def _(np, time_to_color):
         ax.set_yticks([0, 100, 200])
         ax.set_ylim(0, 200)
         ax.legend(fontsize=12)
+
     return (draw_rh_distn,)
 
 
@@ -1537,6 +1592,7 @@ def _(
         )
 
         plt.show()
+
     return (draw_opt,)
 
 
@@ -1672,6 +1728,7 @@ def _(colors, mpl, np, p_over_p0_ticks, plt):
 
         plt.legend()
         plt.show()
+
     return (viz_water_del,)
 
 
@@ -1744,6 +1801,12 @@ def _(WaterAdsorptionIsotherm, n, np, score_fitness, weather):
 
 
 @app.cell
+def _(wai_opt_step):
+    wai_opt_step.get_p_ovr_p0_half_max(verbose=True)
+    return
+
+
+@app.cell
 def _(colors, id_opt_step, mpl, np, plt, step_fitnesses, step_wais, weather):
     def viz_step_wais(step_wais, step_fitnesses, id_opt_step):
         Tref = step_wais[0].Tref
@@ -1786,8 +1849,8 @@ def _(colors, id_opt_step, mpl, np, plt, step_fitnesses, step_wais, weather):
 @app.cell
 def _(best_fitness, best_fitness_step):
     print(
-        "mass savings over a step: ",
-        (best_fitness - best_fitness_step) / best_fitness_step
+        "% mass savings over a step: ",
+        (best_fitness - best_fitness_step) / best_fitness_step * 100
     )
     return
 
