@@ -1,6 +1,6 @@
 import marimo
 
-__generated_with = "0.20.4"
+__generated_with = "0.17.6"
 app = marimo.App()
 
 
@@ -20,6 +20,8 @@ def _():
     import matplotlib.colors as colors
     import seaborn as sns
     from aquarel import load_theme
+    import cartopy.crs as ccrs
+    import cartopy.feature as cfeature
 
     theme = load_theme("minimal_light")
     theme.apply()
@@ -35,6 +37,8 @@ def _():
     my_date_format_str = '%b-%d'
     my_date_format = mdates.DateFormatter(my_date_format_str)
     return (
+        ccrs,
+        cfeature,
         colors,
         datetime,
         math,
@@ -167,6 +171,49 @@ def _():
         'Yuma': 'AZ'
     }
     return (city_to_state,)
+
+
+@app.cell
+def _(ccrs, cfeature, plt):
+    def viz_cities():
+        fig, ax = plt.subplots(
+            figsize=(12, 8),
+            subplot_kw={"projection": ccrs.PlateCarree()}
+        )
+    
+        # Add map features
+        ax.add_feature(cfeature.LAND)
+        ax.add_feature(cfeature.OCEAN)
+        ax.add_feature(cfeature.BORDERS, linewidth=0.5)
+        ax.add_feature(cfeature.COASTLINE)
+        ax.add_feature(cfeature.STATES, linewidth=0.5, edgecolor="gray")
+        ax.set_extent([-130, -100, 30, 50])  # USA bounds
+    
+        # Star locations: (lon, lat)
+        city_to_coords = {
+            'Tucson':      (-110.9742, 32.2540),
+            'Socorro':     (-106.8914, 34.0584), 
+            'Mercury': (-115.9945, 36.6605), 
+            'Stovepipe': (-117.1465, 36.6062),
+            'Riley': (-119.5038, 43.5415),
+            'Yuma': (-114.6277, 32.6927)
+        }
+    
+        for name, (lon, lat) in city_to_coords.items():
+            ax.plot(lon, lat, marker="*", markersize=15, color="C0",
+                    transform=ccrs.PlateCarree())
+            ax.text(lon + 0.5, lat + 0.5, name, fontsize=10,
+                    transform=ccrs.PlateCarree())
+    
+        plt.savefig("map.pdf", dpi=150)
+        plt.show()
+    return (viz_cities,)
+
+
+@app.cell
+def _(viz_cities):
+    viz_cities()
+    return
 
 
 @app.cell
@@ -444,7 +491,6 @@ def _(city_to_state, fig_dir, my_date_format, np, os, pd, plt, time_to_color):
                   np.sum(self.raw_data["T_HR_AVG"] < -999.0)
             )
             self.raw_data = self.raw_data[self.raw_data["T_HR_AVG"] > -999.0]
-
     return (Weather,)
 
 
@@ -555,7 +601,6 @@ def _(weather):
 def _(math):
     def bern_poly(x, v, n):
         return math.comb(n, v) * x ** v * (1.0 - x) ** (n - v)
-
     return (bern_poly,)
 
 
@@ -685,7 +730,6 @@ def _(bern_poly, colors, mpl, np, p_over_p0_max, plt):
             plt.ylim(0, self.w_max)
 
             plt.show()
-
     return (WaterAdsorptionIsotherm,)
 
 
@@ -721,7 +765,6 @@ def _(np):
         water_dels = wai.water_del(weather.ads_des_conditions)
         # get worst-case water delivery, ignoring alpha % of hard cases.
         return np.percentile(water_dels, alpha)
-
     return (score_fitness,)
 
 
@@ -836,7 +879,6 @@ def _(draw_rh_distn, my_colors, np, p_over_p0_ticks, plt, score_fitness):
         )
 
         plt.show()
-
     return (compare_wais,)
 
 
@@ -907,7 +949,6 @@ def _(my_colors, np, p_over_p0_ticks, plt):
                 savename + ".pdf", format="pdf",  bbox_inches="tight"
             )
         plt.show()
-
     return (viz_wais,)
 
 
@@ -933,7 +974,6 @@ def _(WaterAdsorptionIsotherm, np):
         else:
             wai.endow_random_isotherm()
         return wai
-
     return (random_birth,)
 
 
@@ -964,7 +1004,6 @@ def _(np):
         wai.bs[wai.bs < 0.0] = 0.0
         wai.bs[wai.bs > wai.w_max] = wai.w_max
         wai.bs[-1] = wai.w_max
-
     return (mutate,)
 
 
@@ -998,7 +1037,6 @@ def _(np):
         id_a = ids_tourney[ids_winners[0]]
         id_b = ids_tourney[ids_winners[1]]
         return id_a, id_b
-
     return (run_tournament,)
 
 
@@ -1024,7 +1062,6 @@ def _(WaterAdsorptionIsotherm, np):
         return WaterAdsorptionIsotherm(
             wai_a.n, bs=alpha * wai_a.bs + (1 - alpha) * wai_b.bs
         )
-
     return (random_combination,)
 
 
@@ -1068,7 +1105,6 @@ def _(np):
         wai.bs = np.sort(wai.bs)
 
         return wai
-
     return (random_cross_over,)
 
 
@@ -1142,7 +1178,6 @@ def _(score_fitness):
                 fitness = new_fitness
             else:
                 break 
-
     return (ls_stepify,)
 
 
@@ -1238,7 +1273,6 @@ def _(
             mutate(new_wais[id], eps)
 
         return new_wais
-
     return (evolve,)
 
 
@@ -1246,7 +1280,6 @@ def _(
 def _(random_birth):
     def gen_initial_pop(pop_size, n):
         return [random_birth(n) for _ in range(pop_size)]
-
     return (gen_initial_pop,)
 
 
@@ -1313,7 +1346,6 @@ def _(evolve, gen_initial_pop, np, score_fitness):
         best_fitness = np.max(fitnesses)
 
         return fitnesses_gen, best_wai_gen, best_wai, best_fitness
-
     return (do_evolution,)
 
 
@@ -1485,7 +1517,6 @@ def _(np, time_to_color):
         ax.set_yticks([0, 100, 200])
         ax.set_ylim(0, 200)
         ax.legend(fontsize=12)
-
     return (draw_rh_distn,)
 
 
@@ -1592,7 +1623,6 @@ def _(
         )
 
         plt.show()
-
     return (draw_opt,)
 
 
@@ -1728,7 +1758,6 @@ def _(colors, mpl, np, p_over_p0_ticks, plt):
 
         plt.legend()
         plt.show()
-
     return (viz_water_del,)
 
 
