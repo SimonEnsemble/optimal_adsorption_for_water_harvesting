@@ -17,11 +17,13 @@ def _():
     import matplotlib as mpl
     import matplotlib.pyplot as plt
     import matplotlib.cm as cm
+    from matplotlib.ticker import MaxNLocator
     import matplotlib.colors as colors
     import seaborn as sns
     from aquarel import load_theme
     import cartopy.crs as ccrs
     import cartopy.feature as cfeature
+    import pickle
 
     theme = load_theme("minimal_light")
     theme.apply()
@@ -37,6 +39,7 @@ def _():
     my_date_format_str = '%b-%d'
     my_date_format = mdates.DateFormatter(my_date_format_str)
     return (
+        MaxNLocator,
         ccrs,
         cfeature,
         colors,
@@ -48,6 +51,7 @@ def _():
         np,
         os,
         pd,
+        pickle,
         plt,
         sns,
         warnings,
@@ -191,9 +195,9 @@ def _(ccrs, cfeature, plt):
 
         # Star locations: (lon, lat)
         city_to_coords = {
-            'Tucson':      (-110.9742, 32.2540),
-            'Socorro':     (-106.8914, 34.0584), 
-            'Mercury': (-115.9945, 36.6605), 
+            # 'Tucson':      (-110.9742, 32.2540),
+            # 'Socorro':     (-106.8914, 34.0584), 
+            # 'Mercury': (-115.9945, 36.6605), 
             'Stovepipe': (-117.1465, 36.6062),
             'Riley': (-119.5038, 43.5415),
             'Yuma': (-114.6277, 32.6927)
@@ -513,14 +517,14 @@ def _(mo):
 @app.cell
 def _(Weather):
     # weather = Weather([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], 2025, "Mercury")
-    # weather = Weather(range(5, 10), 2025, "Riley")  # step optimal at 0.262
+    weather = Weather(range(5, 10), 2025, "Riley")  # step optimal at 0.262
     # weather = Weather(range(5, 10), 2025, "Yuma") # step optimal at 0.074
     # weather = Weather(range(5, 10), 2025, "Mercury") # step optimal at 0.106
     # weather = Weather(range(5, 10), 2025, "Stovepipe") # step optimal at 0.0519
     # weather = Weather(range(5, 11), 2025, "Utqiagvik") # step marginally optimal at very high humdity
 
     # weather = Weather(range(1, 13), 2025, "Mercury") # step not optimal
-    weather = Weather([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], 2025, "Stovepipe") # step not optimal
+    # weather = Weather([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], 2025, "Stovepipe") # step not optimal
     weather.ads_des_conditions
     # weather.raw_data
     return (weather,)
@@ -1540,7 +1544,7 @@ def _(best_wai, plt, weather):
 
 
 @app.cell
-def _(np, time_to_color):
+def _(MaxNLocator, np, time_to_color):
     def draw_rh_distn(ax, weather):
         p_over_p0_bins = np.linspace(0, 1, 25)
         ax.hist(
@@ -1566,14 +1570,25 @@ def _(np, time_to_color):
         )
 
         ax.set_ylabel("# days")
-        ax.set_yticks([0, 100, 200])
-        ax.set_ylim(0, 200)
+
+        ax.yaxis.set_major_locator(MaxNLocator(nbins=3, integer=True))
+        ax.set_ylim(ymin=0.0)
+
         ax.legend(fontsize=12)
     return (draw_rh_distn,)
 
 
 @app.cell
-def _(colors, draw_rh_distn, mpl, my_colors, np, plt, score_fitness):
+def _(
+    MaxNLocator,
+    colors,
+    draw_rh_distn,
+    mpl,
+    my_colors,
+    np,
+    plt,
+    score_fitness,
+):
     def draw_opt(best_wai, weather, savetag=""):
         p_over_p0s = np.linspace(0, best_wai.p_ovr_p0_max, 100)
 
@@ -1654,9 +1669,16 @@ def _(colors, draw_rh_distn, mpl, my_colors, np, plt, score_fitness):
             label=f"fitness:\n{fitness:.2f}"
         )
         axs[1, 1].set_xlabel("# days")
-        axs[1, 1].set_xticks([0, 100, 200])
-        axs[1, 1].set_xlim(0, 200)
+        axs[1, 1].xaxis.set_major_locator(MaxNLocator(nbins=3, integer=True))
+        axs[1, 1].set_xlim(xmin=0.0)
         axs[1, 1].set_ylabel("water delivery [kg H$_2$O/kg MOF]")
+        axs[1, 0].text(
+            0.5 if "Stovepipe" in weather.loc_title else 0.95,
+            0.9, 
+            weather.loc_title, 
+            transform=axs[1, 0].transAxes, 
+            verticalalignment='center', horizontalalignment='right'
+        )
         # axs[1, 1].legend(fontsize=12)
 
         # fitness label:
@@ -1669,6 +1691,15 @@ def _(colors, draw_rh_distn, mpl, my_colors, np, plt, score_fitness):
 
         plt.show()
     return (draw_opt,)
+
+
+@app.cell
+def _(best_wai, pickle, weather):
+    pf_name = weather.loc_title + 'opt_isotherm.pkl'
+    with open(pf_name, 'wb') as pf:
+        pickle.dump(best_wai, pf)
+        print("saved in: ", pf_name)
+    return
 
 
 @app.cell
@@ -1970,6 +2001,33 @@ def _(
         wai_opt_step, weather, 
         step_failures.iloc[step_failure_explorer.value]["date"].date()
     )
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    A# will one opt isotherm transfer to another?
+    """)
+    return
+
+
+@app.cell
+def _():
+    other_city = "Yuma, AZ"
+    return (other_city,)
+
+
+@app.cell
+def _(other_city, pickle):
+    with open(f'{other_city}.opt_isotherm.pkl', 'rb') as opf:
+        other_best_wai = pickle.load(opf)
+    return (other_best_wai,)
+
+
+@app.cell
+def _(draw_opt, other_best_wai, weather):
+    draw_opt(other_best_wai, weather)
     return
 
 
