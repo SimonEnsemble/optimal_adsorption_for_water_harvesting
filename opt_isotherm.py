@@ -209,7 +209,7 @@ def _(ccrs, cfeature, plt):
             ax.text(lon + 0.5, lat + 0.5, name, fontsize=10,
                     transform=ccrs.PlateCarree())
 
-        plt.savefig("map.pdf", dpi=150)
+        plt.savefig("map.pdf", format="pdf")
         plt.show()
     return (viz_cities,)
 
@@ -516,9 +516,8 @@ def _(mo):
 
 @app.cell
 def _(Weather):
-    # weather = Weather([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], 2025, "Mercury")
-    weather = Weather(range(5, 10), 2025, "Riley")  # step optimal at 0.262
-    # weather = Weather(range(5, 10), 2025, "Yuma") # step optimal at 0.074
+    # weather = Weather(range(5, 10), 2025, "Riley")  # step optimal at 0.262
+    weather = Weather(range(5, 10), 2025, "Yuma") # step optimal at 0.074
     # weather = Weather(range(5, 10), 2025, "Mercury") # step optimal at 0.106
     # weather = Weather(range(5, 10), 2025, "Stovepipe") # step optimal at 0.0519
     # weather = Weather(range(5, 11), 2025, "Utqiagvik") # step marginally optimal at very high humdity
@@ -528,30 +527,6 @@ def _(Weather):
     weather.ads_des_conditions
     # weather.raw_data
     return (weather,)
-
-
-@app.cell
-def _(np):
-    x = np.random.rand(10)
-    x
-    return (x,)
-
-
-@app.cell
-def _(np, x):
-    np.sort(x)
-    return
-
-
-@app.cell
-def _():
-    return
-
-
-@app.cell
-def _(np, x):
-    np.sort(x)[-int(10 * (1-0.3))]
-    return
 
 
 @app.cell
@@ -585,6 +560,8 @@ def _(my_colors, plt, sns, weather):
 
 
         def set_weather_cols_axis(pp):
+            for c in range(4):
+                pp.axes[-1, c].tick_params(axis='x', labelrotation=90)
             for r in [1, 3]:
                 pp.axes[r, 0].set_ylim(weather.T_range)
                 pp.axes[r, 0].set_yticks(weather.T_ticks)
@@ -759,6 +736,11 @@ def _(bern_poly, colors, mpl, np, p_over_p0_max, plt):
 
             plt.show()
     return (WaterAdsorptionIsotherm,)
+
+
+@app.cell
+def _():
+    return
 
 
 @app.cell
@@ -1038,12 +1020,6 @@ def _(mo):
 
 
 @app.cell
-def _(np, wai):
-    np.sort(2 * (np.random.rand(wai.n - 1) - 0.5))
-    return
-
-
-@app.cell
 def _(np):
     def mutate(wai, eps):
         # perturb
@@ -1055,7 +1031,7 @@ def _(np):
             wai.bs = np.sort(wai.bs)
         else:
             wai.bs[1:-1] += np.sort(delta_b)
-        
+
         wai.bs[wai.bs < 0.0] = 0.0
         wai.bs[wai.bs > wai.w_max] = wai.w_max
         wai.bs[-1] = wai.w_max
@@ -1422,6 +1398,12 @@ def _(best_wai):
     return
 
 
+@app.cell
+def _(best_wai):
+    best_wai.get_p_ovr_p0_half_max()
+    return
+
+
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -1548,7 +1530,7 @@ def _(MaxNLocator, np, time_to_color):
     def draw_rh_distn(ax, weather):
         p_over_p0_bins = np.linspace(0, 1, 25)
         ax.hist(
-            weather.ads_des_conditions["des P/P0"], label="capture", 
+            weather.ads_des_conditions["des P/P0"], label="release", 
             bins=p_over_p0_bins, histtype='step', 
             edgecolor=time_to_color["night"]
         )
@@ -1560,7 +1542,7 @@ def _(MaxNLocator, np, time_to_color):
 
         ax.hist(
             weather.ads_des_conditions["ads P/P0"], 
-            label="release", histtype='step',
+            label="capture", histtype='step',
             bins=p_over_p0_bins, edgecolor=time_to_color["day"]
         )
         ax.hist(
@@ -1672,17 +1654,20 @@ def _(
         axs[1, 1].xaxis.set_major_locator(MaxNLocator(nbins=3, integer=True))
         axs[1, 1].set_xlim(xmin=0.0)
         axs[1, 1].set_ylabel("water delivery [kg H$_2$O/kg MOF]")
-        axs[1, 0].text(
-            0.5 if "Stovepipe" in weather.loc_title else 0.95,
-            0.9, 
-            weather.loc_title, 
-            transform=axs[1, 0].transAxes, 
-            verticalalignment='center', horizontalalignment='right'
-        )
-        # axs[1, 1].legend(fontsize=12)
 
+        ###
+        #   info
+        ###
         # fitness label:
-        fitness_label = f"fitness:\n{fitness:.2f} kg H$_2$O/kg MOF",
+        fitness_label = f"{weather.loc_title}\nfitness: {fitness:.2f} kg H$_2$O/kg MOF"
+        axs[0, 1].text(
+            0.0, 0.5,                    # x, y in axes coordinates (0–1)
+            fitness_label,
+            transform=axs[0, 1].transAxes,
+            verticalalignment='center',
+            horizontalalignment='left',
+            fontsize=10
+        )
 
         plt.savefig(
             weather.save_tag + "best_wai_rich" + savetag + ".pdf",
@@ -1771,7 +1756,7 @@ def _(
 
 @app.cell
 def _(colors, mpl, np, p_over_p0_ticks, plt):
-    def viz_water_del(wai, weather, date):
+    def viz_water_del(wai, weather, date, savename=""):
         day_data = weather.ads_des_conditions[
             weather.ads_des_conditions["date"].apply(
                 lambda d: d.date() == date
@@ -1833,6 +1818,11 @@ def _(colors, mpl, np, p_over_p0_ticks, plt):
         )
 
         plt.legend()
+
+        if not savename == "":
+            plt.savefig(
+                weather.save_tag + savename + ".pdf", format="pdf", bbox_inches="tight"
+            )
         plt.show()
     return (viz_water_del,)
 
@@ -1999,7 +1989,8 @@ def _(
 ):
     viz_water_del(
         wai_opt_step, weather, 
-        step_failures.iloc[step_failure_explorer.value]["date"].date()
+        step_failures.iloc[step_failure_explorer.value]["date"].date(),
+        # savename="failure_left"
     )
     return
 
@@ -2007,27 +1998,68 @@ def _(
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    A# will one opt isotherm transfer to another?
+    # will one opt isotherm transfer to another?
     """)
     return
 
 
 @app.cell
 def _():
-    other_city = "Yuma, AZ"
-    return (other_city,)
+    opt_isotherm_city = "Riley, OR"
+    return (opt_isotherm_city,)
 
 
 @app.cell
-def _(other_city, pickle):
-    with open(f'{other_city}.opt_isotherm.pkl', 'rb') as opf:
-        other_best_wai = pickle.load(opf)
-    return (other_best_wai,)
+def _(opt_isotherm_city, pickle):
+    with open(f'{opt_isotherm_city}.opt_isotherm.pkl', 'rb') as opf:
+        other_city_wai = pickle.load(opf)
+    return (other_city_wai,)
 
 
 @app.cell
-def _(draw_opt, other_best_wai, weather):
-    draw_opt(other_best_wai, weather)
+def _(draw_opt, opt_isotherm_city, other_city_wai, weather):
+    draw_opt(other_city_wai, weather, savetag=f"{opt_isotherm_city}_isotherm")
+    return
+
+
+@app.cell
+def _(other_city_wai, weather):
+    opt_performance_nontailored = get_performance_data(
+        other_city_wai, weather, w_low=0.1
+    )
+    return (opt_performance_nontailored,)
+
+
+@app.cell
+def _(opt_performance_nontailored):
+    non_tailored_failures = opt_performance_nontailored.groupby("failure").get_group(True)
+    non_tailored_failures
+    return (non_tailored_failures,)
+
+
+@app.cell
+def _(mo, non_tailored_failures):
+    non_tailor_failure_explorer = mo.ui.slider(
+        start=0, stop=non_tailored_failures.shape[0] - 1, label="failure ID"
+    )
+    non_tailor_failure_explorer
+    return (non_tailor_failure_explorer,)
+
+
+@app.cell
+def _(
+    non_tailor_failure_explorer,
+    non_tailored_failures,
+    opt_isotherm_city,
+    other_city_wai,
+    viz_water_del,
+    weather,
+):
+    viz_water_del(
+        other_city_wai, weather, 
+        non_tailored_failures.iloc[non_tailor_failure_explorer.value]["date"].date(),
+        savename=f"failure_{opt_isotherm_city}"
+    )
     return
 
 
