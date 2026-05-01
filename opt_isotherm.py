@@ -180,7 +180,7 @@ def _(ccrs, cfeature, plt):
             figsize=(12, 8),
             subplot_kw={"projection": ccrs.PlateCarree()}
         )
-    
+
         # Add map features
         ax.add_feature(cfeature.LAND)
         ax.add_feature(cfeature.OCEAN)
@@ -188,7 +188,7 @@ def _(ccrs, cfeature, plt):
         ax.add_feature(cfeature.COASTLINE)
         ax.add_feature(cfeature.STATES, linewidth=0.5, edgecolor="gray")
         ax.set_extent([-130, -100, 30, 50])  # USA bounds
-    
+
         # Star locations: (lon, lat)
         city_to_coords = {
             'Tucson':      (-110.9742, 32.2540),
@@ -198,13 +198,13 @@ def _(ccrs, cfeature, plt):
             'Riley': (-119.5038, 43.5415),
             'Yuma': (-114.6277, 32.6927)
         }
-    
+
         for name, (lon, lat) in city_to_coords.items():
             ax.plot(lon, lat, marker="*", markersize=15, color="C0",
                     transform=ccrs.PlateCarree())
             ax.text(lon + 0.5, lat + 0.5, name, fontsize=10,
                     transform=ccrs.PlateCarree())
-    
+
         plt.savefig("map.pdf", dpi=150)
         plt.show()
     return (viz_cities,)
@@ -520,10 +520,34 @@ def _(Weather):
     # weather = Weather(range(5, 11), 2025, "Utqiagvik") # step marginally optimal at very high humdity
 
     # weather = Weather(range(1, 13), 2025, "Mercury") # step not optimal
-    weather = Weather(range(5, 10), 2025, "Stovepipe") # step not optimal
+    weather = Weather([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], 2025, "Stovepipe") # step not optimal
     weather.ads_des_conditions
     # weather.raw_data
     return (weather,)
+
+
+@app.cell
+def _(np):
+    x = np.random.rand(10)
+    x
+    return (x,)
+
+
+@app.cell
+def _(np, x):
+    np.sort(x)
+    return
+
+
+@app.cell
+def _():
+    return
+
+
+@app.cell
+def _(np, x):
+    np.sort(x)[-int(10 * (1-0.3))]
+    return
 
 
 @app.cell
@@ -800,17 +824,29 @@ def _(mo):
 
 
 @app.cell
-def _(draw_rh_distn, my_colors, np, p_over_p0_ticks, plt, score_fitness):
+def _(wais):
+    wais[0].w_max
+    return
+
+
+@app.cell
+def _(weather):
+    weather.p_ovr_p0_ticks
+    return
+
+
+@app.cell
+def _(draw_rh_distn, my_colors, np, plt, score_fitness):
     def compare_wais(wais, weather, savetag=""):
         the_colors = [my_colors[0]] + my_colors[3:]
         p_over_p0s = np.linspace(0, weather.p_ovr_p0_max, 100)
 
-        fig = plt.figure(figsize=(6, 4.5), layout="constrained")
-        gs = fig.add_gridspec(2, 2, height_ratios=[1, 3], width_ratios=[1, 1])
+        fig = plt.figure(figsize=(6.25, 5), layout="constrained")
+        gs = fig.add_gridspec(2, 2, height_ratios=[1, 3], width_ratios=[2, 1])
         ax00 = fig.add_subplot(gs[0, 0])
         ax10 = fig.add_subplot(gs[1, 0], sharex=ax00) # Only these two share
         ax01 = fig.add_subplot(gs[0, 1])
-        ax11 = fig.add_subplot(gs[1, 1])
+        ax11 = fig.add_subplot(gs[1, 1], sharey=ax10)
         axs = np.array([[ax00, ax01],
                         [ax10, ax11]])
 
@@ -820,7 +856,9 @@ def _(draw_rh_distn, my_colors, np, p_over_p0_ticks, plt, score_fitness):
         #   adsorption isotherm
         ###
         axs[1, 0].set_xlabel("$p / [p_0(T)]$")
+        axs[0, 0].tick_params(axis='x', labelbottom=False)
         axs[1, 0].set_xticks(weather.p_ovr_p0_ticks)
+        axs[1, 0].tick_params(axis='x', labelrotation=90)
         axs[1, 0].set_ylabel(
             f"water adsorption at {wais[0].Tref:.0f}°C\n[kg H$_2$O/kg MOF]"
         )
@@ -833,9 +871,9 @@ def _(draw_rh_distn, my_colors, np, p_over_p0_ticks, plt, score_fitness):
                 label=f"#{w}"
             )
 
-        axs[1, 0].set_xlim(0, weather.p_ovr_p0_max)
+        axs[1, 0].set_xlim(0, 1)
         axs[1, 0].set_ylim(0, wais[0].w_max)
-        axs[1, 0].legend(title="model material", fontsize=8, title_fontsize=10)
+        axs[1, 0].legend(title="material", fontsize=8, title_fontsize=10)
 
         ###
         #   P/P0 distns
@@ -851,23 +889,25 @@ def _(draw_rh_distn, my_colors, np, p_over_p0_ticks, plt, score_fitness):
 
             axs[1, 1].hist(
                 wai.water_del(weather.ads_des_conditions),
+                orientation='horizontal', 
                 edgecolor=the_colors[w], histtype='step',
                 bins=bins
             )
             axs[1, 1].hist(
                 wai.water_del(weather.ads_des_conditions),
+                orientation='horizontal', 
                 color=the_colors[w], alpha=0.25,
                 bins=bins
             )
 
-            axs[1, 1].axvline(
+            axs[1, 1].axhline(
                 fitness, color=the_colors[w], linestyle="--"
             )
-        axs[1, 1].set_ylabel("# days")
-        axs[1, 1].set_yticks([0, 100, 200])
-        axs[1, 1].set_xticks(p_over_p0_ticks)
-        axs[1, 1].set_ylim(0, 300)
-        axs[1, 1].set_xlabel("water delivery\n[kg H$_2$O/kg MOF]")
+        axs[1, 1].set_xlabel("# days")
+        axs[1, 1].set_xticks([0, 100, 200])
+        axs[1, 1].set_yticks([0.1 * i for i in range(6)])
+        axs[1, 1].set_xlim(0, 300)
+        axs[1, 1].set_ylabel("water delivery [kg H$_2$O/kg MOF]")
         # axs[1, 1].legend(fontsize=12)
 
         # fitness label:
@@ -994,13 +1034,24 @@ def _(mo):
 
 
 @app.cell
+def _(np, wai):
+    np.sort(2 * (np.random.rand(wai.n - 1) - 0.5))
+    return
+
+
+@app.cell
 def _(np):
     def mutate(wai, eps):
         # perturb
-        delta_b = 2 * eps * np.sort(np.random.rand(wai.n - 1) - 0.5)
-        wai.bs[1:-1] += delta_b
+        delta_b = 2 * eps * (np.random.rand(wai.n - 1) - 0.5)
 
         # enforce constraint
+        if np.random.rand() < 0.0:
+            wai.bs[1:-1] += delta_b
+            wai.bs = np.sort(wai.bs)
+        else:
+            wai.bs[1:-1] += np.sort(delta_b)
+        
         wai.bs[wai.bs < 0.0] = 0.0
         wai.bs[wai.bs > wai.w_max] = wai.w_max
         wai.bs[-1] = wai.w_max
@@ -1303,7 +1354,7 @@ def _(evolve, gen_initial_pop, np, plt, score_fitness, weather):
     plt.hist(new_fitnesses, alpha=0.5, label="gen #1")
     plt.legend()
     plt.show()
-    return
+    return (wais,)
 
 
 @app.cell(hide_code=True)
@@ -1392,6 +1443,7 @@ def _(fitnesses_gen, pd, plt, sns, weather):
             x="generation", y="fitness [kg H$_2$O/kg MOF]",
             hue="generation", color="C2", palette="crest", legend=False
         )
+        plt.tick_params(axis='x', labelrotation=90)
         # plt.axhline(
         #     y=step_fitnesses[id_opt_step], 
         #     color="gray", linestyle="--", zorder=-1
@@ -1521,16 +1573,7 @@ def _(np, time_to_color):
 
 
 @app.cell
-def _(
-    colors,
-    draw_rh_distn,
-    mpl,
-    my_colors,
-    np,
-    p_over_p0_ticks,
-    plt,
-    score_fitness,
-):
+def _(colors, draw_rh_distn, mpl, my_colors, np, plt, score_fitness):
     def draw_opt(best_wai, weather, savetag=""):
         p_over_p0s = np.linspace(0, best_wai.p_ovr_p0_max, 100)
 
@@ -1540,7 +1583,7 @@ def _(
         #     figsize=(5, 7),
         #     layout="constrained"
         # )
-        fig = plt.figure(figsize=(5, 5), layout="constrained")
+        fig = plt.figure(figsize=(6, 5), layout="constrained")
         gs = fig.add_gridspec(2, 2, height_ratios=[1, 3], width_ratios=[2, 1])
         ax00 = fig.add_subplot(gs[0, 0])
         ax10 = fig.add_subplot(gs[1, 0], sharex=ax00) # Only these two share
@@ -1556,7 +1599,9 @@ def _(
         #   adsorption isotherm
         ###
         axs[1, 0].set_xlabel("$p / [p_0(T)]$")
-        axs[1, 0].set_xticks(p_over_p0_ticks)
+        axs[0, 0].tick_params(axis='x', labelbottom=False)
+        axs[1, 0].set_xticks(weather.p_ovr_p0_ticks)
+        axs[1, 0].tick_params(axis='x', labelrotation=90)
         axs[1, 0].set_ylabel("water adsorption [kg H$_2$O/kg MOF]")
 
         colormap = mpl.colormaps['coolwarm'] # or 'plasma', 'coolwarm', etc.
