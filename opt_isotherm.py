@@ -172,7 +172,8 @@ def _():
         'Mercury': 'NV', 
         'Stovepipe': 'CA',
         'Riley': 'OR',
-        'Yuma': 'AZ'
+        'Yuma': 'AZ',
+        'combined': ''
     }
     return (city_to_state,)
 
@@ -241,6 +242,7 @@ def _(city_to_state, fig_dir, my_date_format, np, os, pd, plt, time_to_color):
             self.time_to_hour = time_to_hour
 
             self._read_raw_weather_data()
+            self._remove_rainy_days()
 
             self._filter_missing()
 
@@ -281,8 +283,6 @@ def _(city_to_state, fig_dir, my_date_format, np, os, pd, plt, time_to_color):
                 dtype={'LST_DATE': str}, 
                 sep='\s+'
             )
-
-            self._remove_rainy_days()
 
         def _remove_rainy_days(self):
             print("removing rainy days")
@@ -498,9 +498,66 @@ def _(city_to_state, fig_dir, my_date_format, np, os, pd, plt, time_to_color):
     return (Weather,)
 
 
-@app.cell
-def _():
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    for combining weather in different cities.
+    """)
     return
+
+
+@app.cell
+def _(Weather, fig_dir, pd):
+    class ManualWeather(Weather):
+        def __init__(
+            self, weathers, months, year, location, time_to_hour={'day': 15, 'night': 5}
+        ):
+            self.months = months
+            self.year = year
+            self.location = location
+            self.time_to_hour = time_to_hour
+            self.relevant_weather_cols = [
+                "T_HR_AVG", "RH_HR_AVG", "SUR_TEMP", "SUR_RH_HR_AVG"
+            ]
+
+            # --- Combine raw_data ---
+            self.raw_data = (
+                pd.concat([w.raw_data for w in weathers], ignore_index=True)
+                .sort_values("datetime")
+                .reset_index(drop=True)
+            )
+
+            # --- Combine wdata (day/night dicts) ---
+            self.wdata = {
+                time: (
+                    pd.concat([w.wdata[time] for w in weathers], ignore_index=True)
+                    .sort_values("datetime")
+                    .reset_index(drop=True)
+                )
+                for time in ["day", "night"]
+            }
+
+            # --- Combine daynight_wdata ---
+            self.daynight_wdata = (
+                pd.concat([w.daynight_wdata for w in weathers], ignore_index=True)
+                .sort_values("datetime")
+                .reset_index(drop=True)
+            )
+
+            # --- Combine ads_des_conditions ---
+            self.ads_des_conditions = (
+                pd.concat([w.ads_des_conditions for w in weathers], ignore_index=True)
+                .sort_values("date")
+                .reset_index(drop=True)
+            )
+
+            # --- Recompute derived plot attributes ---
+            self._compute_p_ovr_p0_max()
+            self._compute_T_range()
+
+            self.loc_title = f"{location} (combined)."
+            self.save_tag = fig_dir + f"/{self.location}_"
+    return (ManualWeather,)
 
 
 @app.cell(hide_code=True)
@@ -515,13 +572,53 @@ def _(mo):
 
 
 @app.cell
-def _(Weather):
+def _(weather):
+    weather.wdata
+    return
+
+
+@app.cell
+def _(ManualWeather, Weather):
+    def combined_weather():
+        weathers = [
+            Weather([5, 6, 7], 2025, "Yuma"),
+            Weather([8, 9, 10], 2025, "Riley")
+        ]
+
+        return ManualWeather(
+            weathers,
+            [5, 6, 7, 8, 9, 10], 2025, "combined"
+        )
+    return (combined_weather,)
+
+
+@app.cell
+def _(cweather):
+    cweather.viz_timeseries()
+    return
+
+
+@app.cell
+def _(cweather):
+
+    cweather
+    return
+
+
+@app.cell
+def _(cweather):
+    cweather.viz_timeseries()
+    return
+
+
+@app.cell
+def _(combined_weather):
     # weather = Weather(range(5, 10), 2025, "Riley")  # step optimal at 0.262
-    weather = Weather(range(5, 10), 2025, "Yuma") # step optimal at 0.074
+    # weather = Weather(range(5, 10), 2025, "Yuma") # step optimal at 0.074
     # weather = Weather(range(5, 10), 2025, "Mercury") # step optimal at 0.106
     # weather = Weather(range(5, 10), 2025, "Stovepipe") # step optimal at 0.0519
     # weather = Weather(range(5, 11), 2025, "Utqiagvik") # step marginally optimal at very high humdity
-
+    weather = combined_weather()
     # weather = Weather(range(1, 13), 2025, "Mercury") # step not optimal
     # weather = Weather([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], 2025, "Stovepipe") # step not optimal
     weather.ads_des_conditions
