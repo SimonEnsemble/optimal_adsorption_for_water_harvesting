@@ -180,7 +180,7 @@ def _():
 
 @app.cell
 def _(ccrs, cfeature, plt):
-    def viz_cities():
+    def viz_cities(cities):
         fig, ax = plt.subplots(
             figsize=(12, 8),
             subplot_kw={"projection": ccrs.PlateCarree()}
@@ -196,28 +196,36 @@ def _(ccrs, cfeature, plt):
 
         # Star locations: (lon, lat)
         city_to_coords = {
-            # 'Tucson':      (-110.9742, 32.2540),
-            # 'Socorro':     (-106.8914, 34.0584), 
-            # 'Mercury': (-115.9945, 36.6605), 
+            'Tucson':      (-110.9742, 32.2540),
+            'Socorro':     (-106.8914, 34.0584), 
+            'Mercury': (-115.9945, 36.6605), 
             'Stovepipe': (-117.1465, 36.6062),
             'Riley': (-119.5038, 43.5415),
             'Yuma': (-114.6277, 32.6927)
         }
-
-        for name, (lon, lat) in city_to_coords.items():
+    
+        for city in cities:
+            lon = city_to_coords[city][0]
+            lat = city_to_coords[city][1]
             ax.plot(lon, lat, marker="*", markersize=15, color="C0",
                     transform=ccrs.PlateCarree())
-            ax.text(lon + 0.5, lat + 0.5, name, fontsize=10,
+            ax.text(lon + 0.5, lat + 0.5, city, fontsize=10,
                     transform=ccrs.PlateCarree())
-
-        plt.savefig("map.pdf", format="pdf")
+        savename = "figs/map"
+        for city in cities:
+            savename = savename + "_" + city
+        plt.savefig(savename + ".pdf", format="pdf")
         plt.show()
     return (viz_cities,)
 
 
 @app.cell
 def _(viz_cities):
-    viz_cities()
+    viz_cities(["Riley"])
+    viz_cities(["Yuma"])
+    viz_cities(["Yuma", "Riley"])
+    viz_cities(["Stovepipe"])
+    viz_cities(["Stovepipe", "Riley", "Yuma"])
     return
 
 
@@ -572,55 +580,30 @@ def _(mo):
 
 
 @app.cell
-def _(weather):
-    weather.wdata
-    return
-
-
-@app.cell
 def _(ManualWeather, Weather):
     def combined_weather():
         weathers = [
-            Weather([5, 6, 7], 2025, "Yuma"),
+            Weather([4, 5, 6, 7], 2025, "Yuma"),
             Weather([8, 9, 10], 2025, "Riley")
         ]
 
         return ManualWeather(
             weathers,
-            [5, 6, 7, 8, 9, 10], 2025, "combined"
+            [4, 5, 6, 7, 8, 9, 10], 2025, "AZ & OR"
         )
-    return (combined_weather,)
-
-
-@app.cell
-def _(cweather):
-    cweather.viz_timeseries()
     return
 
 
 @app.cell
-def _(cweather):
-
-    cweather
-    return
-
-
-@app.cell
-def _(cweather):
-    cweather.viz_timeseries()
-    return
-
-
-@app.cell
-def _(combined_weather):
+def _(Weather):
     # weather = Weather(range(5, 10), 2025, "Riley")  # step optimal at 0.262
     # weather = Weather(range(5, 10), 2025, "Yuma") # step optimal at 0.074
     # weather = Weather(range(5, 10), 2025, "Mercury") # step optimal at 0.106
     # weather = Weather(range(5, 10), 2025, "Stovepipe") # step optimal at 0.0519
     # weather = Weather(range(5, 11), 2025, "Utqiagvik") # step marginally optimal at very high humdity
-    weather = combined_weather()
+    # weather = combined_weather()
     # weather = Weather(range(1, 13), 2025, "Mercury") # step not optimal
-    # weather = Weather([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], 2025, "Stovepipe") # step not optimal
+    weather = Weather([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], 2025, "Stovepipe") # step not optimal
     weather.ads_des_conditions
     # weather.raw_data
     return (weather,)
@@ -833,11 +816,6 @@ def _(bern_poly, colors, mpl, np, p_over_p0_max, plt):
 
             plt.show()
     return (WaterAdsorptionIsotherm,)
-
-
-@app.cell
-def _():
-    return
 
 
 @app.cell
@@ -1481,7 +1459,7 @@ def _(evolve, gen_initial_pop, np, score_fitness):
 def _(do_evolution, run_evol_cbox, weather):
     pop_size = 50
     n_generations = 25
-    n = 30
+    n = 40
     if run_evol_cbox.value:
         fitnesses_gen, best_wai_gen, best_wai, best_fitness = do_evolution(
             weather, n_generations, pop_size, n
@@ -1982,7 +1960,7 @@ def _(WaterAdsorptionIsotherm, n, np, score_fitness, weather):
         wai_opt_step = wais[id_opt]
         return wais, fitnesses, id_opt, wai_opt_step, opt_fitness
 
-    step_wais, step_fitnesses, id_opt_step, wai_opt_step, best_fitness_step = search_step_wais(n*3)
+    step_wais, step_fitnesses, id_opt_step, wai_opt_step, best_fitness_step = search_step_wais(n)
     return (
         best_fitness_step,
         id_opt_step,
@@ -2095,14 +2073,18 @@ def _(
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    # will one opt isotherm transfer to another?
+    # how does the opt isotherm from another city translate to here?
     """)
     return
 
 
 @app.cell
-def _():
-    opt_isotherm_city = "Riley, OR"
+def _(weather):
+    if "Yuma" in weather.loc_title:
+        opt_isotherm_city = "Riley, OR"
+    else:
+        opt_isotherm_city = "Yuma, AZ"
+    opt_isotherm_city
     return (opt_isotherm_city,)
 
 
