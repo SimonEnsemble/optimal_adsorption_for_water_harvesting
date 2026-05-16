@@ -185,6 +185,7 @@ def _():
         'Socorro':     (-106.8914, 34.0584), 
         'Mercury': (-115.9945, 36.6605), 
         'Stovepipe': (-117.1465, 36.6062),
+        'Stovepipe (3 yrs)': (-117.1465, 36.6062),
         'Riley': (-119.5038, 43.5415),
         'Yuma': (-114.6277, 32.6927)
     }
@@ -2170,8 +2171,10 @@ def _(mo):
 def _(weather):
     if "Yuma" in weather.loc_title:
         other_city = "Riley, OR"
-    else:
+    elif "Riley" in weather.loc_title:
         other_city = "Yuma, AZ"
+    elif "Stovepipe" in weather.loc_title:
+        other_city = "Riley, OR"
     other_city
     return (other_city,)
 
@@ -2215,10 +2218,14 @@ def _(
 
     def compare_fitnesses(weather, best_wai, best_wai_other_city):
         fitness = score_fitness(best_wai, weather)
+        print("fitness: ", fitness)
         fitness_other_city = score_fitness(best_wai_other_city, weather)
+        print("fitness with other city's WAI: ", fitness_other_city)
 
         wdels = best_wai.water_del(weather.ads_des_conditions)
+        print("mean water del: ", np.mean(wdels))
         wdels_other_city = best_wai_other_city.water_del(weather.ads_des_conditions)
+        print("mean water del with other city's WAI: ", np.mean(wdels_other_city))
 
         fig = plt.figure(figsize=(6, 3))
         plt.xlabel("water delivery [kg H$_2$O/kg sorbent]")
@@ -2293,11 +2300,6 @@ def _(
         non_tailored_failures.iloc[failure_id]["date"].date(),
         savename="other_city_failure"
     )
-    return
-
-
-@app.cell
-def _():
     return
 
 
