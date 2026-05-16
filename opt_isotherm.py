@@ -613,8 +613,8 @@ def _(ManualWeather, Weather):
 
 @app.cell
 def _(Weather):
-    weather = Weather(range(5, 10), 2025, "Riley")  # step optimal at 0.262
-    # weather = Weather(range(5, 10), 2025, "Yuma") # step optimal at 0.074
+    # weather = Weather(range(5, 10), 2025, "Riley")  # step optimal at 0.262
+    weather = Weather(range(5, 10), 2025, "Yuma") # step optimal at 0.074
     # weather = Weather(range(5, 10), 2025, "Mercury") # step optimal at 0.106
     # weather = Weather(range(5, 10), 2025, "Stovepipe") # step optimal at 0.0519
     # weather = Weather(range(5, 11), 2025, "Utqiagvik") # step marginally optimal at very high humdity
@@ -776,6 +776,25 @@ def _(math):
     def bern_poly(x, v, n):
         return math.comb(n, v) * x ** v * (1.0 - x) ** (n - v)
     return (bern_poly,)
+
+
+@app.cell
+def _(bern_poly, np, plt):
+    def viz_bern(n):
+        fig = plt.figure()
+        plt.xlabel(r"$\phi_0 := P/P_0$")
+        plt.ylabel(r"$b_{\nu, n}(\phi_0)$")
+        xs = np.linspace(0.0, 1.0, 250)
+        for v in range(n+1):
+            plt.plot(xs, [bern_poly(x, v, n) for x in xs], label=rf"$\nu={v}$")
+        plt.legend()
+        plt.title(rf"$n={n}$")
+        plt.tight_layout()
+        plt.savefig("bernstein_basis_polys.pdf", format="pdf")
+        plt.show()
+
+    viz_bern(4)
+    return
 
 
 @app.cell
@@ -1308,8 +1327,11 @@ def _(WaterAdsorptionIsotherm, random_cross_over, viz_wais):
     _rand_wais = [WaterAdsorptionIsotherm(10), WaterAdsorptionIsotherm(10)]
     _rand_wais[0].endow_stepped_isotherm(2)
     _rand_wais[1].endow_random_isotherm()
+    print("parent A:", _rand_wais[0].bs)
+    print("parent B:", _rand_wais[1].bs)
 
     _rand_wais.append(random_cross_over(_rand_wais[0], _rand_wais[1]))
+    print("child:", _rand_wais[-1].bs)
     viz_wais(
         _rand_wais, 
         material_labels=["parent A", "parent B", "child"],
