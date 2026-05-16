@@ -477,16 +477,16 @@ def _(city_to_state, fig_dir, my_date_format, np, os, pd, plt, time_to_color):
 
         def _compute_p_ovr_p0_max(self):
             # print("warning: keeping p/p0 max at 1!")
-            return 1.0
+            self.p_ovr_p0_max =  1.0
             # self.p_ovr_p0_max = np.ceil(
             #     self.ads_des_conditions[
             #         ["ads P/P0", "des P/P0"]
             #     ].max().max() * 10.0
             # ) / 10.0
-            # self.p_ovr_p0_ticks = np.linspace(
-            #     0, self.p_ovr_p0_max, int(np.ceil(self.p_ovr_p0_max * 10)) + 1
-            # )
-            # print("p/p0 max: ", self.p_ovr_p0_max)
+            self.p_ovr_p0_ticks = np.linspace(
+                0, self.p_ovr_p0_max, int(np.ceil(self.p_ovr_p0_max * 10)) + 1
+            )
+            print("p/p0 max manually set: ", self.p_ovr_p0_max)
 
         def _compute_T_range(self):
             T_min = self.ads_des_conditions[
@@ -613,8 +613,8 @@ def _(ManualWeather, Weather):
 
 @app.cell
 def _(Weather):
-    # weather = Weather(range(5, 10), 2025, "Riley")  # step optimal at 0.262
-    weather = Weather(range(5, 10), 2025, "Yuma") # step optimal at 0.074
+    weather = Weather(range(5, 10), 2025, "Riley")  # step optimal at 0.262
+    # weather = Weather(range(5, 10), 2025, "Yuma") # step optimal at 0.074
     # weather = Weather(range(5, 10), 2025, "Mercury") # step optimal at 0.106
     # weather = Weather(range(5, 10), 2025, "Stovepipe") # step optimal at 0.0519
     # weather = Weather(range(5, 11), 2025, "Utqiagvik") # step marginally optimal at very high humdity
@@ -1883,7 +1883,7 @@ def _(
             performance_data.rename(
                 columns=short_to_proper_weather_cols
             ),
-            vars=[short_to_proper_weather_cols[w] for w in weather_cols],
+            vars=[short_to_proper_weather_cols[w] for w in weather_cols] + ["water del [kg H$_2$O/kg MOF]"],
             hue="water del [kg H$_2$O/kg MOF]", 
             corner=True
         )
@@ -1904,7 +1904,7 @@ def _(
 
         set_weather_cols_axis(pp)
 
-        for i in range(4):
+        for i in range(5):
             pp.axes[i, i].set_visible(False)
 
         plt.savefig(
