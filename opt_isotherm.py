@@ -1,6 +1,6 @@
 import marimo
 
-__generated_with = "0.20.4"
+__generated_with = "0.17.6"
 app = marimo.App()
 
 
@@ -179,10 +179,23 @@ def _():
 
 
 @app.cell
-def _(ccrs, cfeature, plt):
+def _():
+    city_to_coords = {
+        'Tucson':      (-110.9742, 32.2540),
+        'Socorro':     (-106.8914, 34.0584), 
+        'Mercury': (-115.9945, 36.6605), 
+        'Stovepipe': (-117.1465, 36.6062),
+        'Riley': (-119.5038, 43.5415),
+        'Yuma': (-114.6277, 32.6927)
+    }
+    return (city_to_coords,)
+
+
+@app.cell
+def _(ccrs, cfeature, city_to_coords, plt):
     def viz_cities(cities):
         fig, ax = plt.subplots(
-            figsize=(12, 8),
+            figsize=(4, 4),
             subplot_kw={"projection": ccrs.PlateCarree()}
         )
 
@@ -192,17 +205,7 @@ def _(ccrs, cfeature, plt):
         ax.add_feature(cfeature.BORDERS, linewidth=0.5)
         ax.add_feature(cfeature.COASTLINE)
         ax.add_feature(cfeature.STATES, linewidth=0.5, edgecolor="gray")
-        ax.set_extent([-130, -100, 30, 50])  # USA bounds
-
-        # Star locations: (lon, lat)
-        city_to_coords = {
-            'Tucson':      (-110.9742, 32.2540),
-            'Socorro':     (-106.8914, 34.0584), 
-            'Mercury': (-115.9945, 36.6605), 
-            'Stovepipe': (-117.1465, 36.6062),
-            'Riley': (-119.5038, 43.5415),
-            'Yuma': (-114.6277, 32.6927)
-        }
+        ax.set_extent([-125, -110, 30, 50])  # USA bounds
 
         for city in cities:
             lon = city_to_coords[city][0]
@@ -214,9 +217,9 @@ def _(ccrs, cfeature, plt):
         savename = "figs/map"
         for city in cities:
             savename = savename + "_" + city
+        plt.tight_layout()
         plt.savefig(savename + ".pdf", format="pdf")
         plt.show()
-
     return (viz_cities,)
 
 
@@ -473,15 +476,17 @@ def _(city_to_state, fig_dir, my_date_format, np, os, pd, plt, time_to_color):
             ]
 
         def _compute_p_ovr_p0_max(self):
-            self.p_ovr_p0_max = np.ceil(
-                self.ads_des_conditions[
-                    ["ads P/P0", "des P/P0"]
-                ].max().max() * 10.0
-            ) / 10.0
-            self.p_ovr_p0_ticks = np.linspace(
-                0, self.p_ovr_p0_max, int(np.ceil(self.p_ovr_p0_max * 10)) + 1
-            )
-            print("p/p0 max: ", self.p_ovr_p0_max)
+            # print("warning: keeping p/p0 max at 1!")
+            return 1.0
+            # self.p_ovr_p0_max = np.ceil(
+            #     self.ads_des_conditions[
+            #         ["ads P/P0", "des P/P0"]
+            #     ].max().max() * 10.0
+            # ) / 10.0
+            # self.p_ovr_p0_ticks = np.linspace(
+            #     0, self.p_ovr_p0_max, int(np.ceil(self.p_ovr_p0_max * 10)) + 1
+            # )
+            # print("p/p0 max: ", self.p_ovr_p0_max)
 
         def _compute_T_range(self):
             T_min = self.ads_des_conditions[
@@ -504,7 +509,6 @@ def _(city_to_state, fig_dir, my_date_format, np, os, pd, plt, time_to_color):
                   np.sum(self.raw_data["T_HR_AVG"] < -999.0)
             )
             self.raw_data = self.raw_data[self.raw_data["T_HR_AVG"] > -999.0]
-
     return (Weather,)
 
 
@@ -567,7 +571,6 @@ def _(Weather, fig_dir, pd):
 
             self.loc_title = f"{location} (combined)."
             self.save_tag = fig_dir + f"/{self.location}_"
-
     return (ManualWeather,)
 
 
@@ -590,7 +593,7 @@ def _(ManualWeather, Weather):
                 Weather([4, 5, 6, 7], 2025, "Yuma"),
                 Weather([8, 9, 10], 2025, "Riley")
             ]
-    
+
             return ManualWeather(
                 weathers,
                 [4, 5, 6, 7, 8, 9, 10], 2025, which
@@ -598,26 +601,25 @@ def _(ManualWeather, Weather):
         elif which == "Stovepipe (3 yrs)":
             weathers = [
                 Weather(list(range(1, 13)), y, "Stovepipe")
-                for y in [2021, 2022, 2023, 2024, 2025]
+                for y in [2023, 2024, 2025]
             ]
-    
+
             return ManualWeather(
                 weathers,
                 list(range(1, 13)), 0, which
             )
-
-    return (combined_weather,)
+    return
 
 
 @app.cell
-def _(combined_weather):
+def _(Weather):
     # weather = Weather(range(5, 10), 2025, "Riley")  # step optimal at 0.262
-    # weather = Weather(range(5, 10), 2025, "Yuma") # step optimal at 0.074
+    weather = Weather(range(5, 10), 2025, "Yuma") # step optimal at 0.074
     # weather = Weather(range(5, 10), 2025, "Mercury") # step optimal at 0.106
     # weather = Weather(range(5, 10), 2025, "Stovepipe") # step optimal at 0.0519
     # weather = Weather(range(5, 11), 2025, "Utqiagvik") # step marginally optimal at very high humdity
     # weather = combined_weather("AZ & OR")
-    weather = combined_weather("Stovepipe (3 yrs)")
+    # weather = combined_weather("Stovepipe (3 yrs)")
     # weather = Weather(range(1, 13), 2025, "Mercury") # step not optimal
     # weather = Weather([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], 2025, "Stovepipe") # step not optimal
     weather.ads_des_conditions
@@ -627,12 +629,51 @@ def _(combined_weather):
 
 @app.cell
 def _(weather):
+    for wmetric in ["ads T [°C]", "des T [°C]", "ads P/P0", "des P/P0"]:
+        print(wmetric)
+        print("\tmean = ", weather.ads_des_conditions[wmetric].mean())
+        print("\tstd = ", weather.ads_des_conditions[wmetric].std())
+    return
+
+
+@app.cell
+def _(weather):
+    weather.ads_des_conditions["ads T [°C]"].mean()
+    return
+
+
+@app.cell
+def _(weather):
+    weather.ads_des_conditions["des T [°C]"].mean()
+    return
+
+
+@app.cell
+def _(weather):
+    weather.ads_des_conditions["ads P/P0"].mean()
+    return
+
+
+@app.cell
+def _(weather):
+    weather.ads_des_conditions["des P/P0"].mean()
+    return
+
+
+@app.cell
+def _(weather):
+    (weather.ads_des_conditions["ads P/P0"] - weather.ads_des_conditions["des P/P0"]).mean()
+    return
+
+
+@app.cell
+def _(weather):
     weather.viz_timeseries(save=True)
     return
 
 
 @app.cell
-def _(my_colors, plt, sns, weather):
+def _(ccrs, cfeature, city_to_coords, my_colors, plt, sns, weather):
     with sns.plotting_context("notebook", font_scale=1.4):
         short_to_proper_weather_cols = {
             'ads T [°C]': 'capture $T$ [°C]',
@@ -654,6 +695,11 @@ def _(my_colors, plt, sns, weather):
             diag_kind='kde'
         )
 
+        for ax in [pp.axes[2, 0], pp.axes[3, 1]]:
+            ax.axline(
+                (0, 0), (1, 1), transform=ax.transAxes, color='black', 
+                zorder=0, linestyle="--"
+            )
 
         def set_weather_cols_axis(pp):
             for c in range(4):
@@ -672,6 +718,33 @@ def _(my_colors, plt, sns, weather):
                 pp.axes[3, c].set_xticks(weather.T_ticks)
 
         set_weather_cols_axis(pp)
+        fig = pp.fig
+        fig.canvas.draw()
+
+        # Infer the top-right 2×2 block from existing axes:
+        #   columns 2 & 3 → use any row that has those axes (e.g. row 3)
+        #   rows 0 & 1    → use the diagonal axes [0,0] and [1,1]
+        x0 = pp.axes[3, 2].get_position().x0
+        x1 = pp.axes[3, 3].get_position().x1
+        y0 = pp.axes[1, 1].get_position().y0
+        y1 = pp.axes[0, 0].get_position().y1
+
+        map_ax = fig.add_axes(
+            [x0, y0, x1 - x0, y1 - y0],
+            projection=ccrs.PlateCarree()
+        )
+        map_ax.add_feature(cfeature.LAND)
+        map_ax.add_feature(cfeature.OCEAN)
+        map_ax.add_feature(cfeature.BORDERS, linewidth=0.5)
+        map_ax.add_feature(cfeature.COASTLINE)
+        map_ax.add_feature(cfeature.STATES, linewidth=0.5, edgecolor="gray")
+        map_ax.set_extent([-125, -110, 30, 50])
+
+        lon, lat = city_to_coords[weather.location]
+        map_ax.plot(lon, lat, marker="*", markersize=15, color="C0",
+                    transform=ccrs.PlateCarree())
+        map_ax.text(lon + 0.5, lat + 0.5, weather.location, fontsize=10,
+                    transform=ccrs.PlateCarree())
 
         plt.tight_layout()
         plt.savefig(
@@ -702,7 +775,6 @@ def _(weather):
 def _(math):
     def bern_poly(x, v, n):
         return math.comb(n, v) * x ** v * (1.0 - x) ** (n - v)
-
     return (bern_poly,)
 
 
@@ -832,7 +904,6 @@ def _(bern_poly, colors, mpl, np, p_over_p0_max, plt):
             plt.ylim(0, self.w_max)
 
             plt.show()
-
     return (WaterAdsorptionIsotherm,)
 
 
@@ -868,7 +939,6 @@ def _(np):
         water_dels = wai.water_del(weather.ads_des_conditions)
         # get worst-case water delivery, ignoring alpha % of hard cases.
         return np.percentile(water_dels, alpha)
-
     return (score_fitness,)
 
 
@@ -999,7 +1069,6 @@ def _(draw_rh_distn, my_colors, np, plt, score_fitness):
         )
 
         plt.show()
-
     return (compare_wais,)
 
 
@@ -1070,7 +1139,6 @@ def _(my_colors, np, p_over_p0_ticks, plt):
                 savename + ".pdf", format="pdf",  bbox_inches="tight"
             )
         plt.show()
-
     return (viz_wais,)
 
 
@@ -1096,7 +1164,6 @@ def _(WaterAdsorptionIsotherm, np):
         else:
             wai.endow_random_isotherm()
         return wai
-
     return (random_birth,)
 
 
@@ -1132,7 +1199,6 @@ def _(np):
         wai.bs[wai.bs < 0.0] = 0.0
         wai.bs[wai.bs > wai.w_max] = wai.w_max
         wai.bs[-1] = wai.w_max
-
     return (mutate,)
 
 
@@ -1166,7 +1232,6 @@ def _(np):
         id_a = ids_tourney[ids_winners[0]]
         id_b = ids_tourney[ids_winners[1]]
         return id_a, id_b
-
     return (run_tournament,)
 
 
@@ -1192,7 +1257,6 @@ def _(WaterAdsorptionIsotherm, np):
         return WaterAdsorptionIsotherm(
             wai_a.n, bs=alpha * wai_a.bs + (1 - alpha) * wai_b.bs
         )
-
     return (random_combination,)
 
 
@@ -1236,7 +1300,6 @@ def _(np):
         wai.bs = np.sort(wai.bs)
 
         return wai
-
     return (random_cross_over,)
 
 
@@ -1310,7 +1373,6 @@ def _(score_fitness):
                 fitness = new_fitness
             else:
                 break 
-
     return (ls_stepify,)
 
 
@@ -1406,7 +1468,6 @@ def _(
             mutate(new_wais[id], eps)
 
         return new_wais
-
     return (evolve,)
 
 
@@ -1414,7 +1475,6 @@ def _(
 def _(random_birth):
     def gen_initial_pop(pop_size, n):
         return [random_birth(n) for _ in range(pop_size)]
-
     return (gen_initial_pop,)
 
 
@@ -1481,7 +1541,6 @@ def _(evolve, gen_initial_pop, np, score_fitness):
         best_fitness = np.max(fitnesses)
 
         return fitnesses_gen, best_wai_gen, best_wai, best_fitness
-
     return (do_evolution,)
 
 
@@ -1662,7 +1721,6 @@ def _(MaxNLocator, np, time_to_color):
         ax.set_ylim(ymin=0.0)
 
         ax.legend(fontsize=12)
-
     return (draw_rh_distn,)
 
 
@@ -1765,7 +1823,7 @@ def _(
         #   info
         ###
         # fitness label:
-        fitness_label = f"{weather.loc_title}\nfitness: {fitness:.2f} kg H$_2$O/kg MOF"
+        fitness_label = f"{weather.loc_title}\nfitness:\n  {fitness:.2f} kg H$_2$O/kg MOF"
         axs[0, 1].text(
             0.0, 0.5,                    # x, y in axes coordinates (0–1)
             fitness_label,
@@ -1781,7 +1839,6 @@ def _(
         )
 
         plt.show()
-
     return (draw_opt,)
 
 
@@ -1931,7 +1988,6 @@ def _(colors, mpl, np, p_over_p0_ticks, plt):
                 weather.save_tag + savename + ".pdf", format="pdf", bbox_inches="tight"
             )
         plt.show()
-
     return (viz_water_del,)
 
 
