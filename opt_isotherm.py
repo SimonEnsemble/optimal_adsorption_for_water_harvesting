@@ -2168,6 +2168,14 @@ def _(mo):
 
 
 @app.cell
+def _(mo):
+    mo.md(r"""
+    # idea: for stovepipe, compare to optimal step. that's the final figure.
+    """)
+    return
+
+
+@app.cell
 def _(weather):
     if "Yuma" in weather.loc_title:
         other_city = "Riley, OR"
