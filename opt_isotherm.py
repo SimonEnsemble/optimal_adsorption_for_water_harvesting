@@ -185,7 +185,6 @@ def _():
         'Socorro':     (-106.8914, 34.0584), 
         'Mercury': (-115.9945, 36.6605), 
         'Stovepipe': (-117.1465, 36.6062),
-        'Stovepipe (3 yrs)': (-117.1465, 36.6062),
         'Riley': (-119.5038, 43.5415),
         'Yuma': (-114.6277, 32.6927)
     }
@@ -599,7 +598,7 @@ def _(ManualWeather, Weather):
                 weathers,
                 [4, 5, 6, 7, 8, 9, 10], 2025, which
             )
-        elif which == "Stovepipe (3 yrs)":
+        elif which == "Stovepipe":
             weathers = [
                 Weather(list(range(1, 13)), y, "Stovepipe")
                 for y in [2023, 2024, 2025]
@@ -620,7 +619,7 @@ def _(combined_weather):
     # weather = Weather(range(5, 10), 2025, "Stovepipe") # step optimal at 0.0519
     # weather = Weather(range(5, 11), 2025, "Utqiagvik") # step marginally optimal at very high humdity
     # weather = combined_weather("AZ & OR")
-    weather = combined_weather("Stovepipe (3 yrs)")
+    weather = combined_weather("Stovepipe")
     # weather = Weather(range(1, 13), 2025, "Mercury") # step not optimal
     # weather = Weather([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], 2025, "Stovepipe") # step not optimal
     weather.ads_des_conditions
@@ -639,7 +638,9 @@ def _(weather):
 
 @app.cell
 def _(weather):
-    (weather.ads_des_conditions["ads P/P0"] - weather.ads_des_conditions["des P/P0"]).mean()
+    print(
+        "mean delta p/p0: ", (weather.ads_des_conditions["ads P/P0"] - weather.ads_des_conditions["des P/P0"]).mean()
+    )
     return
 
 
@@ -1608,7 +1609,7 @@ def _(fitnesses_gen, pd, plt, sns, weather):
 
 
 @app.cell
-def _(best_wai_gen, colors, mpl, np, plt, weather):
+def _(best_wai_gen, colors, mpl, np, p_over_p0_ticks, plt, wais, weather):
     def viz_best_wais(best_wai_gen):
         p_over_p0s = np.linspace(0, best_wai_gen[0].p_ovr_p0_max, 150)
         Tref = best_wai_gen[0].Tref
@@ -1618,7 +1619,10 @@ def _(best_wai_gen, colors, mpl, np, plt, weather):
 
         plt.figure()
         plt.xlabel("$p/p_0[T]$")
-        plt.ylabel("water adsorption [kg H$_2$O/kg sorbent]")
+        plt.xticks(p_over_p0_ticks)
+        plt.ylabel(
+            f"water adsorption at {wais[0].Tref:.0f}°C\n[kg H$_2$O/kg sorbent]"
+        )
         for g in range(len(best_wai_gen)):
             plt.plot(
                 p_over_p0s, 
@@ -2032,6 +2036,7 @@ def _(mo):
 def _(WaterAdsorptionIsotherm, n, np, score_fitness, weather):
     def search_step_wais(dim):
         wais = [WaterAdsorptionIsotherm(dim) for i in range(dim-1)]
+    
         for i_step in np.arange(1, dim):
             wais[i_step-1].endow_stepped_isotherm(i_step)
 
@@ -2040,22 +2045,119 @@ def _(WaterAdsorptionIsotherm, n, np, score_fitness, weather):
         )
         id_opt = np.argmax(fitnesses)
         opt_fitness = np.max(fitnesses)
-        wai_opt_step = wais[id_opt]
-        return wais, fitnesses, id_opt, wai_opt_step, opt_fitness
+        best_wai_step = wais[id_opt]
+        return wais, fitnesses, id_opt, best_wai_step, opt_fitness
 
-    step_wais, step_fitnesses, id_opt_step, wai_opt_step, best_fitness_step = search_step_wais(n)
+    step_wais, step_fitnesses, id_opt_step, best_wai_step, best_fitness_step = search_step_wais(n)
     return (
         best_fitness_step,
+        best_wai_step,
         id_opt_step,
         step_fitnesses,
         step_wais,
-        wai_opt_step,
     )
 
 
 @app.cell
-def _(wai_opt_step):
-    wai_opt_step.get_p_ovr_p0_half_max(verbose=True)
+def _(
+    best_wai,
+    best_wai_step,
+    draw_fitness,
+    my_colors,
+    np,
+    plt,
+    score_fitness,
+    weather,
+):
+    def compare_fitnesses_step(weather, best_wai, best_wai_step):
+        fitness = score_fitness(best_wai, weather)
+        print("fitness: ", fitness)
+    
+        fitness_step = score_fitness(best_wai_step, weather)
+        print("fitness with step: ", fitness_step)
+
+        wdels = best_wai.water_del(weather.ads_des_conditions)
+        print("mean water del: ", np.mean(wdels))
+        wdels_step = best_wai_step.water_del(weather.ads_des_conditions)
+        print("mean water del with best step WAI: ", np.mean(wdels_step))
+
+        fig = plt.figure(figsize=(6, 3))
+        plt.xlabel("water delivery [kg H$_2$O/kg sorbent]")
+        plt.ylabel("# days")
+
+        draw_fitness(wdels, fitness, my_colors[4], label="optimal")
+        draw_fitness(
+            wdels_step, fitness_step, my_colors[6], label="optimal step"
+        )
+        plt.title("water delivery distribution in " + weather.loc_title[:-1])
+        plt.legend(title="water adsorption isotherm")
+
+        plt.tight_layout()
+        plt.savefig(
+            weather.save_tag + "step_comparison.pdf", format="pdf"
+        )
+
+        plt.show()
+
+    compare_fitnesses_step(weather, best_wai, best_wai_step)
+    return
+
+
+@app.cell
+def _(best_wai):
+    best_wai.Tref
+    return
+
+
+@app.cell
+def _(best_wai, best_wai_step, my_colors, np, p_over_p0_ticks, plt, weather):
+    def compare_opt_wai_and_opt_step_wai(best_wai, best_wai_step):
+        plt.figure(figsize=(4, 4))
+
+        plt.xlabel("relative humidity $p / [p_0(T)]$")
+        plt.xticks(p_over_p0_ticks)
+        plt.ylabel(
+            f"water adsorption at {best_wai.Tref:.0f}°C\n[kg H$_2$O/kg sorbent]"
+        )
+
+        p_over_p0s = np.linspace(0, 1, 200)
+        plt.plot(
+            p_over_p0s, 
+            [best_wai.water_ads(best_wai.Tref, p_over_p0) for p_over_p0 in p_over_p0s],
+            color=my_colors[4], label="optimal", clip_on=False, lw=2
+        )
+        plt.plot(
+            p_over_p0s, 
+            [best_wai_step.water_ads(best_wai.Tref, p_over_p0) 
+             for p_over_p0 in p_over_p0s
+            ],
+            color=my_colors[6], label="optimal step", clip_on=False, lw=2
+        )
+        plt.legend()
+
+        plt.xlim(0, best_wai.p_ovr_p0_max)
+        plt.ylim(0, best_wai.w_max)
+
+        plt.savefig(
+            weather.save_tag + "step_vs_opt_wai.pdf",
+            format="pdf",  bbox_inches="tight"
+        )
+
+        plt.show()
+
+    compare_opt_wai_and_opt_step_wai(best_wai, best_wai_step)
+    return
+
+
+@app.cell
+def _(weather):
+    weather.save_tag
+    return
+
+
+@app.cell
+def _(best_wai_step):
+    best_wai_step.get_p_ovr_p0_half_max(verbose=True)
     return
 
 
@@ -2109,14 +2211,14 @@ def _(best_fitness, best_fitness_step):
 
 
 @app.cell
-def _(draw_opt, wai_opt_step, weather):
-    draw_opt(wai_opt_step, weather, savetag="baseline")
+def _(best_wai_step, draw_opt, weather):
+    draw_opt(best_wai_step, weather, savetag="baseline")
     return
 
 
 @app.cell
-def _(wai_opt_step, weather):
-    opt_performance_step = get_performance_data(wai_opt_step, weather, w_low=0.05)
+def _(best_wai_step, weather):
+    opt_performance_step = get_performance_data(best_wai_step, weather, w_low=0.05)
     opt_performance_step
     return (opt_performance_step,)
 
@@ -2145,14 +2247,14 @@ def _(step_failure_explorer, step_failures):
 
 @app.cell
 def _(
+    best_wai_step,
     step_failure_explorer,
     step_failures,
     viz_water_del,
-    wai_opt_step,
     weather,
 ):
     viz_water_del(
-        wai_opt_step, weather, 
+        best_wai_step, weather, 
         step_failures.iloc[step_failure_explorer.value]["date"].date(),
         # savename="failure_left"
     )
@@ -2163,14 +2265,6 @@ def _(
 def _(mo):
     mo.md(r"""
     # how does the opt isotherm from another city translate to here?
-    """)
-    return
-
-
-@app.cell
-def _(mo):
-    mo.md(r"""
-    # idea: for stovepipe, compare to optimal step. that's the final figure.
     """)
     return
 
@@ -2211,7 +2305,7 @@ def _(
     score_fitness,
     weather,
 ):
-    def _draw_fitness(wdels, fitness, color, label):
+    def draw_fitness(wdels, fitness, color, label):
         bins = np.linspace(0.0, 0.5, 15)
 
         plt.hist(
@@ -2239,8 +2333,8 @@ def _(
         plt.xlabel("water delivery [kg H$_2$O/kg sorbent]")
         plt.ylabel("# days")
 
-        _draw_fitness(wdels, fitness, my_colors[4], label=weather.loc_title[:-1])
-        _draw_fitness(
+        draw_fitness(wdels, fitness, my_colors[4], label=weather.loc_title[:-1])
+        draw_fitness(
             wdels_other_city, fitness_other_city, my_colors[6], label=other_city
         )
         plt.title("water delivery distribution in " + weather.loc_title[:-1])
@@ -2250,11 +2344,11 @@ def _(
         plt.savefig(
             weather.save_tag + "other_city_isotherm_fitness.pdf", format="pdf"
         )
-    
+
         plt.show()
 
     compare_fitnesses(weather, best_wai, best_wai_other_city)
-    return
+    return (draw_fitness,)
 
 
 @app.cell
@@ -2302,7 +2396,7 @@ def _(
     else:
         failure_id = non_tailor_failure_explorer.value
         print(failure_id)
-    
+
     viz_water_del(
         best_wai_other_city, weather, 
         non_tailored_failures.iloc[failure_id]["date"].date(),
