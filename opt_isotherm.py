@@ -521,7 +521,7 @@ def _(mo):
 
 
 @app.cell
-def _(Weather, fig_dir, pd):
+def _(Weather, city_to_state, fig_dir, pd):
     class ManualWeather(Weather):
         def __init__(
             self, weathers, months, year, location, time_to_hour={'day': 15, 'night': 5}
@@ -569,7 +569,7 @@ def _(Weather, fig_dir, pd):
             self._compute_p_ovr_p0_max()
             self._compute_T_range()
 
-            self.loc_title = f"{location} (combined)."
+            self.loc_title = f"{location}, {city_to_state[location]}."
             self.save_tag = fig_dir + f"/{self.location}_"
     return (ManualWeather,)
 
@@ -601,7 +601,7 @@ def _(ManualWeather, Weather):
         elif which == "Stovepipe":
             weathers = [
                 Weather(list(range(1, 13)), y, "Stovepipe")
-                for y in [2023, 2024, 2025]
+                for y in [2021, 2022, 2023, 2024, 2025]
             ]
 
             return ManualWeather(
@@ -947,15 +947,35 @@ def _(score_fitness, wai, weather):
 
 
 @app.cell
-def _(fitness, p_over_p0_max, plt, wai, weather):
+def _(np, plt):
+    def draw_fitness(wdels, fitness, color, label):
+        bins = np.linspace(0.0, 0.5, 15)
+
+        plt.hist(
+            wdels,
+            edgecolor=color, facecolor=(color, 0.25),
+            histtype='stepfilled', linewidth=1.5, bins=bins, label=label
+        )
+        plt.axvline(
+            fitness, linestyle="--", color=color
+            # label=f"fitness:\n{fitness:.2f} kg H$_2$O/kg sorbent", color=color
+        )
+    return (draw_fitness,)
+
+
+@app.cell
+def _(draw_fitness, fitness, my_colors, plt, wai, weather):
     plt.figure()
-    plt.hist(wai.water_del(weather.ads_des_conditions))
-    plt.axvline(fitness, color="C1", label=f"10% VaR")
+    draw_fitness(
+        wai.water_del(weather.ads_des_conditions), 
+        fitness, 
+        my_colors[4],
+        ""
+    )
+    plt.xlabel("water delivery [kg H$_2$O/kg sorbent]")
     plt.ylabel("# days")
-    plt.xlim(0, p_over_p0_max)
-    plt.legend()
-    plt.xlabel("water delivery")
     plt.tight_layout()
+
     plt.savefig(weather.save_tag + "eg_var.pdf", format="pdf")
     plt.show()
     plt.show()
@@ -1588,10 +1608,13 @@ def _(fitnesses_gen, pd, plt, sns, weather):
             columns=['generation', 'fitness [kg H$_2$O/kg sorbent]']
         )
 
+        fig, ax = plt.subplots(figsize=(6, 4))
+
         sns.stripplot(
             data, 
             x="generation", y="fitness [kg H$_2$O/kg sorbent]",
-            hue="generation", color="C2", palette="crest", legend=False
+            hue="generation", color="C2", palette="crest", legend=False,
+            ax=ax
         )
         plt.tick_params(axis='x', labelrotation=90)
         # plt.axhline(
@@ -1617,7 +1640,7 @@ def _(best_wai_gen, colors, mpl, np, p_over_p0_ticks, plt, wais, weather):
         colormap = mpl.colormaps['crest'] # or 'plasma', 'coolwarm', etc.
         norm = colors.Normalize(vmin=0, vmax=len(best_wai_gen))
 
-        plt.figure()
+        plt.figure(figsize=(5, 4))
         plt.xlabel("$p/p_0[T]$")
         plt.xticks(p_over_p0_ticks)
         plt.ylabel(
@@ -1636,7 +1659,7 @@ def _(best_wai_gen, colors, mpl, np, p_over_p0_ticks, plt, wais, weather):
         sm = plt.cm.ScalarMappable(cmap=colormap, norm=norm)
         # sm.set_array([]) # Required for matplotlib versions < 3.4
         cb_ax = plt.gca().inset_axes(
-            [0.7, 0.12, 0.2, 0.6]
+            [0.7, 0.2, 0.2, 0.6]
         )
         cb_ax.axis("off")
         plt.colorbar(
@@ -2298,6 +2321,7 @@ def _(weather):
 def _(
     best_wai,
     best_wai_other_city,
+    draw_fitness,
     my_colors,
     np,
     other_city,
@@ -2305,19 +2329,6 @@ def _(
     score_fitness,
     weather,
 ):
-    def draw_fitness(wdels, fitness, color, label):
-        bins = np.linspace(0.0, 0.5, 15)
-
-        plt.hist(
-            wdels,
-            edgecolor=color, facecolor=(color, 0.25),
-            histtype='stepfilled', linewidth=1.5, bins=bins, label=label
-        )
-        plt.axvline(
-            fitness, linestyle="--", color=color
-            # label=f"fitness:\n{fitness:.2f} kg H$_2$O/kg sorbent", color=color
-        )
-
     def compare_fitnesses(weather, best_wai, best_wai_other_city):
         fitness = score_fitness(best_wai, weather)
         print("fitness: ", fitness)
@@ -2332,7 +2343,6 @@ def _(
         fig = plt.figure(figsize=(6, 3))
         plt.xlabel("water delivery [kg H$_2$O/kg sorbent]")
         plt.ylabel("# days")
-
         draw_fitness(wdels, fitness, my_colors[4], label=weather.loc_title[:-1])
         draw_fitness(
             wdels_other_city, fitness_other_city, my_colors[6], label=other_city
@@ -2348,7 +2358,7 @@ def _(
         plt.show()
 
     compare_fitnesses(weather, best_wai, best_wai_other_city)
-    return (draw_fitness,)
+    return
 
 
 @app.cell
