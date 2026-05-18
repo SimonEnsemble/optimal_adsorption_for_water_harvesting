@@ -1,6 +1,6 @@
 import marimo
 
-__generated_with = "0.17.6"
+__generated_with = "0.23.6"
 app = marimo.App()
 
 
@@ -220,6 +220,7 @@ def _(ccrs, cfeature, city_to_coords, plt):
         plt.tight_layout()
         plt.savefig(savename + ".pdf", format="pdf")
         plt.show()
+
     return (viz_cities,)
 
 
@@ -499,6 +500,13 @@ def _(city_to_state, fig_dir, my_date_format, np, os, pd, plt, time_to_color):
             ].max().max()
             T_max = np.ceil(T_max / 10) * 10
 
+            # manually set
+            if T_min < -10 or T_max > 70.0:
+                print([T_min, T_max])
+                raise Exception("extend Tmin Tmax")
+
+            T_min = -10.0
+            T_max = 70.0
             self.T_range = [T_min, T_max]
             self.T_ticks = np.linspace(
                 T_min, T_max, int(np.ceil((T_max - T_min) / 10)) + 1
@@ -509,6 +517,7 @@ def _(city_to_state, fig_dir, my_date_format, np, os, pd, plt, time_to_color):
                   np.sum(self.raw_data["T_HR_AVG"] < -999.0)
             )
             self.raw_data = self.raw_data[self.raw_data["T_HR_AVG"] > -999.0]
+
     return (Weather,)
 
 
@@ -571,6 +580,7 @@ def _(Weather, city_to_state, fig_dir, pd):
 
             self.loc_title = f"{location}, {city_to_state[location]}."
             self.save_tag = fig_dir + f"/{self.location}_"
+
     return (ManualWeather,)
 
 
@@ -601,13 +611,34 @@ def _(ManualWeather, Weather):
         elif which == "Stovepipe":
             weathers = [
                 Weather(list(range(1, 13)), y, "Stovepipe")
-                for y in [2021, 2022, 2023, 2024, 2025]
+                for y in [2023, 2024, 2025]
             ]
 
             return ManualWeather(
                 weathers,
                 list(range(1, 13)), 0, which
             )
+        elif which == "Riley":
+            weathers = [
+                Weather(list(range(5, 10)), y, "Riley")
+                for y in [2023, 2024, 2025]
+            ]
+
+            return ManualWeather(
+                weathers,
+                list(range(5, 10)), 0, which
+            )
+        elif which == "Yuma":
+            weathers = [
+                Weather(list(range(5, 10)), y, "Yuma")
+                for y in [2023, 2024, 2025]
+            ]
+
+            return ManualWeather(
+                weathers,
+                list(range(5, 10)), 0, which
+            )
+
     return (combined_weather,)
 
 
@@ -619,7 +650,9 @@ def _(combined_weather):
     # weather = Weather(range(5, 10), 2025, "Stovepipe") # step optimal at 0.0519
     # weather = Weather(range(5, 11), 2025, "Utqiagvik") # step marginally optimal at very high humdity
     # weather = combined_weather("AZ & OR")
-    weather = combined_weather("Stovepipe")
+    # weather = combined_weather("Stovepipe")
+    weather = combined_weather("Riley")
+    # weather = combined_weather("Yuma")
     # weather = Weather(range(1, 13), 2025, "Mercury") # step not optimal
     # weather = Weather([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], 2025, "Stovepipe") # step not optimal
     weather.ads_des_conditions
@@ -753,6 +786,7 @@ def _(weather):
 def _(math):
     def bern_poly(x, v, n):
         return math.comb(n, v) * x ** v * (1.0 - x) ** (n - v)
+
     return (bern_poly,)
 
 
@@ -901,6 +935,7 @@ def _(bern_poly, colors, mpl, np, p_over_p0_max, plt):
             plt.ylim(0, self.w_max)
 
             plt.show()
+
     return (WaterAdsorptionIsotherm,)
 
 
@@ -936,6 +971,7 @@ def _(np):
         water_dels = wai.water_del(weather.ads_des_conditions)
         # get worst-case water delivery, ignoring alpha % of hard cases.
         return np.percentile(water_dels, alpha)
+
     return (score_fitness,)
 
 
@@ -960,6 +996,7 @@ def _(np, plt):
             fitness, linestyle="--", color=color
             # label=f"fitness:\n{fitness:.2f} kg H$_2$O/kg sorbent", color=color
         )
+
     return (draw_fitness,)
 
 
@@ -1086,6 +1123,7 @@ def _(draw_rh_distn, my_colors, np, plt, score_fitness):
         )
 
         plt.show()
+
     return (compare_wais,)
 
 
@@ -1156,6 +1194,7 @@ def _(my_colors, np, p_over_p0_ticks, plt):
                 savename + ".pdf", format="pdf",  bbox_inches="tight"
             )
         plt.show()
+
     return (viz_wais,)
 
 
@@ -1181,6 +1220,7 @@ def _(WaterAdsorptionIsotherm, np):
         else:
             wai.endow_random_isotherm()
         return wai
+
     return (random_birth,)
 
 
@@ -1216,6 +1256,7 @@ def _(np):
         wai.bs[wai.bs < 0.0] = 0.0
         wai.bs[wai.bs > wai.w_max] = wai.w_max
         wai.bs[-1] = wai.w_max
+
     return (mutate,)
 
 
@@ -1249,6 +1290,7 @@ def _(np):
         id_a = ids_tourney[ids_winners[0]]
         id_b = ids_tourney[ids_winners[1]]
         return id_a, id_b
+
     return (run_tournament,)
 
 
@@ -1274,6 +1316,7 @@ def _(WaterAdsorptionIsotherm, np):
         return WaterAdsorptionIsotherm(
             wai_a.n, bs=alpha * wai_a.bs + (1 - alpha) * wai_b.bs
         )
+
     return (random_combination,)
 
 
@@ -1317,6 +1360,7 @@ def _(np):
         wai.bs = np.sort(wai.bs)
 
         return wai
+
     return (random_cross_over,)
 
 
@@ -1393,6 +1437,7 @@ def _(score_fitness):
                 fitness = new_fitness
             else:
                 break 
+
     return (ls_stepify,)
 
 
@@ -1488,6 +1533,7 @@ def _(
             mutate(new_wais[id], eps)
 
         return new_wais
+
     return (evolve,)
 
 
@@ -1495,6 +1541,7 @@ def _(
 def _(random_birth):
     def gen_initial_pop(pop_size, n):
         return [random_birth(n) for _ in range(pop_size)]
+
     return (gen_initial_pop,)
 
 
@@ -1561,6 +1608,7 @@ def _(evolve, gen_initial_pop, np, score_fitness):
         best_fitness = np.max(fitnesses)
 
         return fitnesses_gen, best_wai_gen, best_wai, best_fitness
+
     return (do_evolution,)
 
 
@@ -1721,32 +1769,26 @@ def _(MaxNLocator, np, time_to_color):
         p_over_p0_bins = np.linspace(0, 1, 25)
         ax.hist(
             weather.ads_des_conditions["des P/P0"], label="release", 
-            bins=p_over_p0_bins, histtype='step', 
-            edgecolor=time_to_color["night"]
-        )
-        ax.hist(
-            weather.ads_des_conditions["des P/P0"],  
-            bins=p_over_p0_bins, 
-            color=time_to_color["night"], alpha=0.25
+            bins=p_over_p0_bins, histtype='stepfilled', 
+            edgecolor=time_to_color["night"],
+            facecolor=(time_to_color["night"], 0.25),
+            linewidth=1.5
         )
 
         ax.hist(
             weather.ads_des_conditions["ads P/P0"], 
-            label="capture", histtype='step',
-            bins=p_over_p0_bins, edgecolor=time_to_color["day"]
+            label="capture", histtype='stepfilled',
+            bins=p_over_p0_bins, edgecolor=time_to_color["day"],
+            facecolor=(time_to_color["day"], 0.25),
+            linewidth=1.5
         )
-        ax.hist(
-            weather.ads_des_conditions["ads P/P0"], 
-            bins=p_over_p0_bins, 
-            color=time_to_color["day"], alpha=0.25
-        )
-
         ax.set_ylabel("# days")
 
         ax.yaxis.set_major_locator(MaxNLocator(nbins=3, integer=True))
         ax.set_ylim(ymin=0.0)
 
         ax.legend(fontsize=12)
+
     return (draw_rh_distn,)
 
 
@@ -1860,6 +1902,7 @@ def _(
         )
 
         plt.show()
+
     return (draw_opt,)
 
 
@@ -2009,6 +2052,7 @@ def _(colors, mpl, np, p_over_p0_ticks, plt):
                 weather.save_tag + savename + ".pdf", format="pdf", bbox_inches="tight"
             )
         plt.show()
+
     return (viz_water_del,)
 
 
@@ -2059,7 +2103,7 @@ def _(mo):
 def _(WaterAdsorptionIsotherm, n, np, score_fitness, weather):
     def search_step_wais(dim):
         wais = [WaterAdsorptionIsotherm(dim) for i in range(dim-1)]
-    
+
         for i_step in np.arange(1, dim):
             wais[i_step-1].endow_stepped_isotherm(i_step)
 
@@ -2095,7 +2139,7 @@ def _(
     def compare_fitnesses_step(weather, best_wai, best_wai_step):
         fitness = score_fitness(best_wai, weather)
         print("fitness: ", fitness)
-    
+
         fitness_step = score_fitness(best_wai_step, weather)
         print("fitness with step: ", fitness_step)
 
