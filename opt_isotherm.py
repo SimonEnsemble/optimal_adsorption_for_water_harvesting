@@ -651,8 +651,8 @@ def _(combined_weather):
     # weather = Weather(range(5, 11), 2025, "Utqiagvik") # step marginally optimal at very high humdity
     # weather = combined_weather("AZ & OR")
     # weather = combined_weather("Stovepipe")
-    weather = combined_weather("Riley")
-    # weather = combined_weather("Yuma")
+    # weather = combined_weather("Riley")
+    weather = combined_weather("Yuma")
     # weather = Weather(range(1, 13), 2025, "Mercury") # step not optimal
     # weather = Weather([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], 2025, "Stovepipe") # step not optimal
     weather.ads_des_conditions
@@ -2391,7 +2391,7 @@ def _(
         draw_fitness(
             wdels_other_city, fitness_other_city, my_colors[6], label=other_city
         )
-        plt.title("water delivery distribution in " + weather.loc_title[:-1])
+        # plt.title("water delivery distribution in " + weather.loc_title[:-1])
         plt.legend(title="isotherm optimized for...")
 
         plt.tight_layout()
