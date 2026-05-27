@@ -172,7 +172,8 @@ def _():
         'Mercury': 'NV', 
         'Stovepipe': 'CA',
         'Riley': 'OR',
-        'Yuma': 'AZ'
+        'Yuma': 'AZ',
+        'Yuma -> Stovepipe Wells -> Riley': ''
     }
     return (city_to_state,)
 
@@ -594,15 +595,16 @@ def _(mo):
 @app.cell
 def _(ManualWeather, Weather, fig_dir, os):
     def combined_weather(which):
-        if which == "AZ & OR":
+        if which == "Yuma -> Stovepipe Wells -> Riley":
             weathers = [
-                Weather([4, 5, 6, 7], 2025, "Yuma"),
-                Weather([8, 9, 10], 2025, "Riley")
+                Weather(list(range(5, 10)), 2023, "Yuma"),
+                Weather(list(range(5, 10)), 2024, "Stovepipe"),
+                Weather(list(range(5, 10)), 2025, "Riley")
             ]
 
             w = ManualWeather(
                 weathers,
-                [4, 5, 6, 7, 8, 9, 10], 2025, which
+                list(range(5, 10)), "May-Sep.", which
             )
         elif which == "Stovepipe":
             weathers = [
@@ -634,6 +636,16 @@ def _(ManualWeather, Weather, fig_dir, os):
                 weathers,
                 list(range(1, 13)), "year-round", "Riley"
             )
+        elif which == "Yuma (year-round)":
+            weathers = [
+                Weather(list(range(1, 13)), y, "Yuma")
+                for y in [2023, 2024, 2025]
+            ]
+
+            w = ManualWeather(
+                weathers,
+                list(range(1, 13)), "year-round", "Yuma"
+            )
         elif which == "Yuma (May-Sep.)":
             weathers = [
                 Weather(list(range(5, 10)), y, "Yuma")
@@ -659,9 +671,11 @@ def _(combined_weather):
     # weather = Weather(range(5, 11), 2025, "Utqiagvik") # step marginally optimal at very high humdity
     # weather = combined_weather("AZ & OR")
     # weather = combined_weather("Stovepipe")
+    # weather = combined_weather("Yuma -> Stovepipe Wells -> Riley")
     # weather = combined_weather("Riley (May-Sep.)")
     # weather = combined_weather("Yuma (May-Sep.)")
     weather = combined_weather("Riley (year-round)")
+    # weather = combined_weather("Yuma (year-round)")
     # weather = Weather(range(1, 13), 2025, "Mercury") # step not optimal
     # weather = Weather([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], 2025, "Stovepipe") # step not optimal
     weather.ads_des_conditions
@@ -760,11 +774,15 @@ def _(ccrs, cfeature, city_to_coords, my_colors, plt, sns, weather):
         map_ax.add_feature(cfeature.STATES, linewidth=0.5, edgecolor="gray")
         map_ax.set_extent([-125, -110, 30, 50])
 
-        lon, lat = city_to_coords[weather.location]
-        map_ax.plot(lon, lat, marker="*", markersize=20, color=my_colors[0],
-                    transform=ccrs.PlateCarree())
-        map_ax.text(lon + 0.5, lat + 0.5, weather.location, fontsize=14,
-                    transform=ccrs.PlateCarree())
+        cities = [weather.location]
+        if weather.location == 'Yuma -> Stovepipe Wells -> Riley':
+            cities = ["Yuma", "Stovepipe", "Riley"]
+        for city in cities:
+            lon, lat = city_to_coords[city]
+            map_ax.plot(lon, lat, marker="*", markersize=20, color=my_colors[0],
+                        transform=ccrs.PlateCarree())
+            map_ax.text(lon + 0.5, lat + 0.5, city, fontsize=14,
+                        transform=ccrs.PlateCarree())
 
         plt.tight_layout()
         plt.savefig(
@@ -971,13 +989,21 @@ def _(mo):
 
 
 @app.cell
+def _():
+    1/7 * 100
+    return
+
+
+@app.cell
 def _(np):
-    # value at risk https://en.wikipedia.org/wiki/Value_at_risk
-    def score_fitness(wai, weather, alpha=10.0):
+    # conditional value at risk
+    def score_fitness(wai, weather, alpha=1/7 * 100):
         # get dist'n of water dels
         water_dels = wai.water_del(weather.ads_des_conditions)
         # get worst-case water delivery, ignoring alpha % of hard cases.
-        return np.percentile(water_dels, alpha)
+        #   (variance at risk)
+        var = np.percentile(water_dels, alpha)
+        return np.mean(water_dels[water_dels <= var])
     return (score_fitness,)
 
 
