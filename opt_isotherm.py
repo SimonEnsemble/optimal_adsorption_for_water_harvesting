@@ -1805,7 +1805,7 @@ def _():
 @app.cell
 def _(MaxNLocator, np, time_to_color):
     def draw_rh_distn(ax, weather):
-        p_over_p0_bins = np.linspace(0, 1, 15)
+        p_over_p0_bins = np.linspace(0, 1, 25)
         ax.hist(
             weather.ads_des_conditions["des P/P0"], label="release", 
             bins=p_over_p0_bins, histtype='stepfilled', 
