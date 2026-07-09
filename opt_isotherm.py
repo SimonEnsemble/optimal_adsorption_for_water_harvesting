@@ -1,6 +1,6 @@
 import marimo
 
-__generated_with = "0.23.6"
+__generated_with = "0.23.13"
 app = marimo.App()
 
 
@@ -12,6 +12,7 @@ def _():
     import numpy as np
     import os
     import datetime
+    import random
     import warnings
     import matplotlib.dates as mdates
     import matplotlib as mpl
@@ -54,6 +55,7 @@ def _():
         pd,
         pickle,
         plt,
+        random,
         sns,
         warnings,
     )
@@ -598,11 +600,10 @@ def _(mo):
 
 
 @app.cell
-def _(ManualWeather, Weather, fig_dir, os):
+def _(ManualWeather, Weather, all_yrs, fig_dir, os, random):
     def combined_weather(which):
         summer_months = [6, 7, 8] # meterological
         yrs = [2023, 2024, 2025]
-        all_yrs = list(range(1, 13))
 
         if which == "Riley (July)":
             weathers = [
@@ -612,12 +613,43 @@ def _(ManualWeather, Weather, fig_dir, os):
                 weathers,
                 [7], "July", "Riley"
             )
+        elif which == "Yuma (July)":
+            weathers = [
+                Weather([7], y, "Yuma") for y in yrs
+            ]
+            w = ManualWeather(
+                weathers,
+                [7], "July", "Yuma"
+            )
+        elif which == "Yuma & Riley (summer)":
+            weathers = []
+            cities = ["Riley", "Yuma"]
+            for yr in yrs:
+                mos = [5, 6, 7, 8, 9]
+                for m in range(len(mos)):
+                    mo = mos.pop(random.randrange(len(mos)))
+                    city = random.choice(cities)
+                    try:
+                        weather = Weather([mo], yr, city)
+                    except Exception as e:
+                        if str(e) == "extend Tmin Tmax":
+                            city = random.choice(cities)
+                            weather = Weather([mo], yr, city)
+                        else:
+                            raise
+                    weathers.append(weather)
+
+            w = ManualWeather(
+                weathers,
+                [6, 7, 8, 9], 
+                "summer", "Yuma & Riley"
+            )
         elif len(which.split()) == 2:
             if which.split()[1] == "(summer)":
                 mos = summer_months
             elif which.split()[1] == "(year-round)":
                 mos = all_yrs
-            
+
             city = which.split()[0]
 
             weathers = [
@@ -630,15 +662,22 @@ def _(ManualWeather, Weather, fig_dir, os):
                 mos, which.split()[1], city
             )  
         elif which == "Yuma & Stovepipe Wells & Riley & Mercury":
-            weathers = [
-                Weather([7], y, "Riley") for y in yrs
-            ] + [
-                Weather([8, 9, 10, 11, 12], y, "Stovepipe") for y in yrs
-            ] + [
-                Weather([1, 2, 3, 4], y, "Yuma") for y in yrs
-            ] + [
-                Weather([5, 6], y, "Mercury") for y in yrs
-            ]
+            weathers = []
+            cities = ["Riley", "Stovepipe", "Yuma"]
+            for yr in yrs:
+                mos = [6, 7, 8, 9]
+                for m in range(len(mos)):
+                    mo = mos.pop(random.randrange(len(mos)))
+                    city = random.choice(cities)
+                    try:
+                        weather = Weather([mo], yr, city)
+                    except Exception as e:
+                        if str(e) == "extend Tmin Tmax":
+                            city = random.choice(cities)
+                            weather = Weather([mo], yr, city)
+                        else:
+                            raise
+                    weathers.append(weather)
 
             w = ManualWeather(
                 weathers,
@@ -660,8 +699,9 @@ def _(combined_weather):
     # weather = combined_weather("Stovepipe (summer)") # step 0.04 RH
     # weather = combined_weather("Yuma & Stovepipe Wells & Riley")
     # weather = combined_weather("Yuma & Stovepipe Wells & Riley & Mercury")
-    weather = combined_weather("Stovepipe (year-round)")
-    # weather = combined_weather("Riley (July)") # step 0.16 RH
+    # weather = combined_weather("Yuma & Stovepipe Wells & Riley & Mercury")
+    weather = combined_weather("Riley (July)") # step 0.16 RH
+    weather = combined_weather("Yuma & Riley (summer)") 
     weather.ads_des_conditions
     # weather.raw_data
     return (weather,)
@@ -777,7 +817,7 @@ def _(ccrs, cfeature, city_to_coords, my_colors, plt, sns, weather):
             weather.save_tag + "ads_des_conditions.pdf", 
             format="pdf"
         )
-    pp
+        plt.show()
     return set_weather_cols_axis, short_to_proper_weather_cols, weather_cols
 
 
@@ -1006,14 +1046,14 @@ def _(np):
         alpha=1/7 * 100, orientation="vertical"
     ):
         var = np.percentile(wdels, alpha)
-    
+
         n_bins = 25
         n_lo = max(1, round(n_bins * alpha / 100))
         n_hi = max(1, n_bins - n_lo)
-    
+
         lo_edges = np.linspace(0.0, var, n_lo + 1)
         hi_edges = np.linspace(var, 0.5, n_hi + 1)
-    
+
         # join — drop the duplicate q_val at the join point
         edges = np.concatenate([lo_edges, hi_edges[1:]])
 
@@ -1852,7 +1892,7 @@ def _(
         #     figsize=(5, 7),
         #     layout="constrained"
         # )
-        fig = plt.figure(figsize=(6, 5), layout="constrained")
+        fig = plt.figure(figsize=(10, 5), layout="constrained")
         gs = fig.add_gridspec(2, 2, height_ratios=[1, 3], width_ratios=[2, 1])
         ax00 = fig.add_subplot(gs[0, 0])
         ax10 = fig.add_subplot(gs[1, 0], sharex=ax00) # Only these two share
@@ -1909,7 +1949,7 @@ def _(
         ###
         fitness = score_fitness(best_wai, weather)
         print("fitness: ", fitness)
-    
+
         draw_fitness(
             axs[1, 1], best_wai.water_del(weather.ads_des_conditions), 
             fitness, my_colors[4], "", orientation="horizontal"
