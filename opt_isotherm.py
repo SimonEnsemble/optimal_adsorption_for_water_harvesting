@@ -550,7 +550,7 @@ def _(mo):
 @app.cell
 def _(Weather, WeatherData, dropdown, random):
     summer_months = [6, 7, 8] # meterological
-    yrs = [2023, 2024, 2025]
+    yrs = [2021, 2022, 2023, 2024, 2025]
 
     random_cities = ["Yuma", "Riley", "Stovepipe"]
 
@@ -972,9 +972,22 @@ def _(gaussian_kde, np):
                 xs[hi_mask], density[hi_mask], color=color, alpha=0.1,
                 label=label
             )
+            ax.set_xlabel("water delivery [kg H$_2$O/kg sorbent]")
+            ax.set_ylabel("density")   
+            ax.set_xlim([0.0, 0.5])
+            ax.set_ylim(ymin=0.0)
+            ax.set_yticks([0])
+        
             ax.axvline(fitness, linestyle="--", color=color)
         else:
             ax.plot(density, xs, color=color, linewidth=1.5)
+        
+            ax.set_ylabel("water delivery [kg H$_2$O/kg sorbent]")
+            ax.set_xlabel("density")   
+            ax.set_ylim([0.0, 0.5])
+            ax.set_xlim(xmin=0.0)
+            ax.set_xticks([0])
+        
             ax.fill_betweenx(
                 xs[lo_mask], density[lo_mask], color=color, alpha=0.4
             )
@@ -997,8 +1010,6 @@ def _(draw_fitness, fitness, my_colors, plt, wai, weather):
         my_colors[4],
         ""
     )
-    plt.xlabel("water delivery [kg H$_2$O/kg sorbent]")
-    plt.ylabel("# days")
     plt.tight_layout()
 
     plt.savefig(weather.tag + "eg_var.pdf", format="pdf")
@@ -1754,6 +1765,7 @@ def _(MaxNLocator, gaussian_kde, idea_to_color, np):
         ax.yaxis.set_major_locator(MaxNLocator(nbins=3))
         ax.set_xlim(0, 1)
         ax.set_ylim(ymin=0.0)
+        ax.set_yticks([0])
         ax.legend(fontsize=12)
 
     return (draw_rh_distn,)
@@ -1761,7 +1773,6 @@ def _(MaxNLocator, gaussian_kde, idea_to_color, np):
 
 @app.cell
 def _(
-    MaxNLocator,
     T_range,
     T_ticks,
     colors,
@@ -1783,8 +1794,13 @@ def _(
         #     figsize=(5, 7),
         #     layout="constrained"
         # )
-        fig = plt.figure(figsize=(7, 5), layout="constrained")
-        gs = fig.add_gridspec(2, 2, height_ratios=[1, 3], width_ratios=[2, 1])
+        fig = plt.figure(figsize=(6.6, 6), layout="constrained")
+        gs = fig.add_gridspec(
+            2, 2,
+            height_ratios=[1, 3],
+            width_ratios=[3, 1], 
+            wspace=0.0, hspace=0.0
+        )
         ax00 = fig.add_subplot(gs[0, 0])
         ax10 = fig.add_subplot(gs[1, 0], sharex=ax00) # Only these two share
         ax01 = fig.add_subplot(gs[0, 1])
@@ -1793,6 +1809,7 @@ def _(
                         [ax10, ax11]])
 
         axs[0, 1].axis('off')
+        # ax10.set_box_aspect(1)
         # axs[1, 0].get_shared_x_axes().join(axs[1, 0], axs[0, 0])
 
         ###
@@ -1832,8 +1849,6 @@ def _(
         #   P/P0 distns
         ###
         draw_rh_distn(axs[0, 0], weather)
-        # axs[0, 0].set_yticks([0])
-        axs[0, 0].yaxis.set_major_locator(MaxNLocator(nbins=3, integer=True))
 
         ###
         #   working cap dist'n
@@ -1846,25 +1861,19 @@ def _(
             fitness, my_colors[4], "", orientation="horizontal"
         )
 
-        axs[1, 1].set_xlabel("# days")
-        # axs[1, 1].set_xticks([0])
-        axs[1, 1].xaxis.set_major_locator(MaxNLocator(nbins=3, integer=True))
-        axs[1, 1].set_xlim(xmin=0.0)
-        axs[1, 1].set_ylabel("water delivery [kg H$_2$O/kg sorbent]")
-
         ###
         #   info
         ###
         # fitness label:
         fitness_label = f"{weather.tag}\nfitness:\n  {fitness:.2f} kg/kg"
-        axs[0, 1].text(
-            0.0, 0.5,                    # x, y in axes coordinates (0–1)
-            fitness_label,
-            transform=axs[0, 1].transAxes,
-            verticalalignment='center',
-            horizontalalignment='left',
-            fontsize=10
-        )
+        # axs[0, 1].text(
+        #     0.0, 0.5,                    # x, y in axes coordinates (0–1)
+        #     fitness_label,
+        #     transform=axs[0, 1].transAxes,
+        #     verticalalignment='center',
+        #     horizontalalignment='left',
+        #     fontsize=10
+        # )
 
         plt.savefig(
             weather.tag + "best_wai_rich" + savetag + ".pdf",
