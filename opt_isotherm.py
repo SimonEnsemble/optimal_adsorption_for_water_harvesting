@@ -1,6 +1,6 @@
 import marimo
 
-__generated_with = "0.17.6"
+__generated_with = "0.23.14"
 app = marimo.App()
 
 
@@ -14,6 +14,8 @@ def _():
     import datetime
     import random
     import warnings
+    from scipy.special import comb
+    from scipy.stats import gaussian_kde
     import matplotlib.dates as mdates
     import matplotlib as mpl
     import matplotlib.pyplot as plt
@@ -27,7 +29,7 @@ def _():
     import pickle
     from scipy.stats import gaussian_kde
 
-    theme = load_theme("minimal_light")
+    theme = load_theme("umbra_light")
     theme.apply()
     plt.rcParams.update(
         {
@@ -45,8 +47,9 @@ def _():
         ccrs,
         cfeature,
         colors,
+        comb,
         datetime,
-        math,
+        gaussian_kde,
         mo,
         mpl,
         np,
@@ -69,10 +72,17 @@ def _(sns):
 
 @app.cell
 def _(my_colors):
-    time_to_color = {'day': my_colors[1], "night": my_colors[2]}
-    time_to_color["ads"] = time_to_color["night"]
-    time_to_color["des"] = time_to_color["day"]
-    return (time_to_color,)
+    idea_to_color =  {
+        'day': my_colors[1], 
+        "night": my_colors[2],
+        "water ads": my_colors[0],
+        "Yuma": my_colors[3],
+        "Riley": my_colors[4],
+        "Stovepipe": my_colors[6]
+    }
+    idea_to_color["ads"] = idea_to_color["night"]
+    idea_to_color["des"] = idea_to_color["day"]
+    return (idea_to_color,)
 
 
 @app.cell
@@ -156,7 +166,7 @@ def _(np, plt):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    # ☀️ weather time series data (for capture and release conditions)
+    # ☀️ weather time series data
 
     NOAA hourly data [here](https://www.ncei.noaa.gov/access/crn/products.html).
 
@@ -166,26 +176,17 @@ def _(mo):
 
 
 @app.cell
-def _():
+def _(np):
+    # temperature range
     T_range = [0.0, 70.0] # deg C
-    return (T_range,)
 
-
-@app.cell
-def _(T_range, np):
+    # ticks for plots
     T_ticks = np.linspace(
         T_range[0], T_range[1], 
         int(np.ceil((T_range[1] - T_range[0]) / 10)) + 1
     )
-    T_ticks
-    return (T_ticks,)
-
-
-@app.cell
-def _(np):
     p_ovr_p0_ticks = np.linspace(0, 1, 11)
-    p_ovr_p0_ticks
-    return (p_ovr_p0_ticks,)
+    return T_range, T_ticks, p_ovr_p0_ticks
 
 
 @app.cell
@@ -194,12 +195,10 @@ def _():
         'Tucson': 'AZ', 
         'Socorro': 'NM', 
         'Utqiagvik': 'AK', 
-        'Mercury': 'NV', 
+        'Mercury': 'NV', # Mojave desert
         'Stovepipe': 'CA',
-        'Riley': 'OR',
-        'Yuma': 'AZ',
-        'Yuma & Stovepipe Wells & Riley': 'AZ, OR, & CA',
-        "Yuma & Stovepipe Wells & Riley & Mercury": 'AZ, OR, CA, & NV',
+        'Riley': 'OR', # high desert
+        'Yuma': 'AZ' # Sonoran desert
     }
     return (city_to_state,)
 
@@ -207,12 +206,12 @@ def _():
 @app.cell
 def _():
     city_to_coords = {
-        'Tucson':      (-110.9742, 32.2540),
-        'Socorro':     (-106.8914, 34.0584), 
-        'Mercury': (-115.9945, 36.6605), 
+        'Tucson':    (-110.9742, 32.2540),
+        'Socorro':   (-106.8914, 34.0584), 
+        'Mercury':   (-115.9945, 36.6605), 
         'Stovepipe': (-117.1465, 36.6062),
-        'Riley': (-119.5038, 43.5415),
-        'Yuma': (-114.6277, 32.6927)
+        'Riley':     (-119.5038, 43.5415),
+        'Yuma':      (-114.6277, 32.6927)
     }
     return (city_to_coords,)
 
@@ -246,18 +245,22 @@ def _(ccrs, cfeature, city_to_coords, plt):
         plt.tight_layout()
         plt.savefig(savename + ".pdf", format="pdf")
         plt.show()
+
     return (viz_cities,)
 
 
 @app.cell
 def _(viz_cities):
-    viz_cities(["Yuma", "Riley"])
+    viz_cities(["Yuma", "Riley", "Stovepipe"])
     return
 
 
 @app.cell
 def _(np, os, pd):
     class WeatherData:
+        """
+        read in weather time series from a location in a given month and year
+        """
         def __init__(
             self, location, month, year, 
             verbose=True, time_to_hour={'day': 15, 'night': 5}
@@ -284,7 +287,7 @@ def _(np, os, pd):
             self._remove_rainy_days()
             self._infer_surface_RH()
             self._prune_raw_data()
-        
+
             self.time_to_hour = time_to_hour
             self._attach_ads_des_conditions()
 
@@ -322,12 +325,12 @@ def _(np, os, pd):
             self.raw_data = self.raw_data[
                 self.raw_data["date"].dt.year == self.year
             ] # keep only 2024
-        
+
             # get hours
             self.raw_data["time"] = [
                 pd.Timedelta(hours=h) for h in self.raw_data["LST_TIME"] / 100
             ]
-        
+
             self.raw_data["datetime"] = (
                 self.raw_data["date"] + self.raw_data["time"]
             )
@@ -336,12 +339,12 @@ def _(np, os, pd):
             self.raw_data = self.raw_data.loc[
                 self.raw_data["datetime"].dt.month == self.month
             ]
-    
+
         def _remove_rainy_days(self):
             self.raw_data["rain_daily_total"] = (
                 self.raw_data.groupby("LST_DATE")["P_CALC"].transform("sum")
             )
-        
+
             if self.verbose:
                 n_rainy_days = (
                     self.raw_data.loc[
@@ -349,7 +352,7 @@ def _(np, os, pd):
                     ].nunique()
                 )
                 print(f"\tremoved {n_rainy_days} rainy days")
-            
+
             self.raw_data = self.raw_data[
                 self.raw_data["rain_daily_total"] == 0.0
             ]
@@ -430,6 +433,7 @@ def _(np, os, pd):
             return self.ads_des_conditions[
                 ["ads T [°C]", "des T [°C]"]
             ].min().min() < 0.0
+
     return (WeatherData,)
 
 
@@ -441,13 +445,17 @@ def _(WeatherData):
 
 
 @app.cell
-def _(T_range, pd, plt, time_to_color):
+def _(T_range, idea_to_color, pd, plt):
     class Weather:
+        """
+        combine weather time series data from multiple (location, month, year)
+          combinations
+        """
         def __init__(
             self, weather_datas, tag
         ):
             self.tag = tag
-        
+
             self.ads_des_conditions = (
                 pd.concat(
                     [w.ads_des_conditions for w in weather_datas], 
@@ -460,7 +468,7 @@ def _(T_range, pd, plt, time_to_color):
             assert self.ads_des_conditions["date"].nunique() == n_rows
 
             self._assert_in_T_range()
-   
+
         def viz_timeseries(
             self, save=False, incl_legend=True, 
             legend_dx=0.0, legend_dy=0.0
@@ -480,7 +488,7 @@ def _(T_range, pd, plt, time_to_color):
                     self.ads_des_conditions[f"{ads_des} T [°C]"],
                     edgecolors="black", clip_on=False,
                     marker="^", 
-                    color=time_to_color[ads_des], zorder=10, 
+                    color=idea_to_color[ads_des], zorder=10, 
                     label=ads_des, 
                     s=25
                 )
@@ -495,7 +503,7 @@ def _(T_range, pd, plt, time_to_color):
                     self.ads_des_conditions[f"{ads_des} P/P0"],
                     edgecolors="black", clip_on=False,
                     marker="v", 
-                    color=time_to_color[ads_des], zorder=10, 
+                    color=idea_to_color[ads_des], zorder=10, 
                     label=ads_des, 
                     s=25
                 )
@@ -514,11 +522,12 @@ def _(T_range, pd, plt, time_to_color):
             T_max = self.ads_des_conditions[
                 ["ads T [°C]", "des T [°C]"]
             ].max().max()
-    
+
             # manually set
             if T_min < T_range[0] or T_max > T_range[1]:
                 print([T_min, T_max])
                 raise Exception("extend T_range")
+
     return (Weather,)
 
 
@@ -530,47 +539,12 @@ def _(weather):
 
 @app.cell(hide_code=True)
 def _(mo):
-    mo.md(r"""
-    for combining weather in different cities.
-    """)
-    return
-
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    ## choose regions
-    * Mercury, NV. Mojave Desert.
-    * Yuma, AZ. Sonoran Desert.
-    * Riely, OR. "high desert"
-    """)
-    return
-
-
-@app.cell
-def _(mo):
     dropdown = mo.ui.dropdown(
-        options=["Yuma", "Riley", "Yuma & Riley & Stovepipe"], 
+        options=["Yuma", "Riley", "Stovepipe", "Yuma & Riley & Stovepipe"], 
         value="Yuma", label="choose location"
     )
     dropdown
     return (dropdown,)
-
-
-app._unparsable_cell(
-    r"""
-    weather.
-    """,
-    name="_"
-)
-
-
-@app.cell
-def _(random):
-    xx=["Yuma", "Riley", "Stovepipe"]
-    random.shuffle(xx)
-    xx
-    return
 
 
 @app.cell
@@ -578,26 +552,31 @@ def _(Weather, WeatherData, dropdown, random):
     summer_months = [6, 7, 8] # meterological
     yrs = [2023, 2024, 2025]
 
-    if dropdown.value == "Yuma":
+    random_cities = ["Yuma", "Riley", "Stovepipe"]
+
+    if dropdown.value in ["Yuma", "Riley", "Stovepipe"]:
+        _city = dropdown.value
         weather_datas = [
-            WeatherData("Yuma", mo, yr) 
+            WeatherData(_city, mo, yr) 
             for mo in summer_months
             for yr in yrs
         ]
     elif dropdown.value == "Yuma & Riley & Stovepipe":
         weather_datas = []
-        _cities = ["Yuma", "Riley", "Stovepipe"]
+
+
+        random.seed(42)
         for yr in yrs:
             _mos = summer_months.copy()
             for _i in range(len(_mos)):
                 _mo = _mos.pop(random.randrange(len(_mos)))
-                random.shuffle(_cities)
-                for _city in _cities:
+                random.shuffle(random_cities)
+                for _city in random_cities:
                     _weather_data = WeatherData(_city, _mo, yr)
                     if not _weather_data.sees_ice():
                         weather_datas.append(_weather_data)
                         break
-                
+
     weather =  Weather(
         # list of weather data
         weather_datas,
@@ -605,7 +584,7 @@ def _(Weather, WeatherData, dropdown, random):
         dropdown.value
     )
     weather.ads_des_conditions
-    return (weather,)
+    return random_cities, weather
 
 
 @app.cell
@@ -622,20 +601,13 @@ def _(weather):
         print("\tmax = ", weather.ads_des_conditions[wmetric].max())
         print("\tmean = ", weather.ads_des_conditions[wmetric].mean())
         print("\tstd = ", weather.ads_des_conditions[wmetric].std())
-    return
 
-
-@app.cell
-def _(weather):
     print(
-        "mean delta p/p0: ", (weather.ads_des_conditions["ads P/P0"] - weather.ads_des_conditions["des P/P0"]).mean()
+        "mean delta p/p0: ", (
+            weather.ads_des_conditions["ads P/P0"] - \
+            weather.ads_des_conditions["des P/P0"]
+        ).mean()
     )
-    return
-
-
-@app.cell
-def _(weather):
-    weather.viz_timeseries(save=True)
     return
 
 
@@ -646,9 +618,11 @@ def _(
     ccrs,
     cfeature,
     city_to_coords,
+    idea_to_color,
     my_colors,
     p_ovr_p0_ticks,
     plt,
+    random_cities,
     sns,
     weather,
 ):
@@ -668,6 +642,8 @@ def _(
             ),
             vars=[short_to_proper_weather_cols[w] for w in weather_cols],
             hue="location",
+            hue_order=random_cities,
+            palette=idea_to_color,
             corner=True,
             plot_kws=dict(marker="+", linewidth=1, color=my_colors[0]),
             diag_kws=dict(fill=False, color=my_colors[0]),
@@ -722,10 +698,14 @@ def _(
         cities = ["Yuma", "Stovepipe", "Riley"]
         for city in cities:
             lon, lat = city_to_coords[city]
-            map_ax.plot(lon, lat, marker="*", markersize=20, color=my_colors[0],
-                        transform=ccrs.PlateCarree())
-            map_ax.text(lon + 0.5, lat + 0.5, city, fontsize=14,
-                        transform=ccrs.PlateCarree())
+            map_ax.plot(
+                lon, lat, marker="*", markersize=20, 
+                color=idea_to_color[city], transform=ccrs.PlateCarree()
+            )
+            map_ax.text(
+                lon + 0.5, lat + 0.5, city, 
+                fontsize=14, transform=ccrs.PlateCarree()
+            )
 
         plt.tight_layout()
         plt.savefig(
@@ -745,21 +725,56 @@ def _(mo):
 
 
 @app.cell
-def _(math):
-    def bern_poly(x, v, n):
-        return math.comb(n, v) * x ** v * (1.0 - x) ** (n - v)
-    return (bern_poly,)
+def _(comb, np):
+    class BernPolyBasis:
+        def __init__(self, n):
+            self.n = n
+            self.vs = np.arange(n + 1)
+            self.coeffs = comb(n, self.vs) # pre-compute for speed
+
+        def basis_matrix(self, x):
+            """
+            Evaluate all n+1 basis functions at every point in x.
+            x: scalar or array-like, shape (m,)
+            returns: array, shape (m, n+1)
+            """
+            x = np.atleast_1d(np.asarray(x, dtype=float))
+            return (
+                self.coeffs
+                * x[:, None] ** self.vs[None, :]
+                * (1.0 - x[:, None]) ** (self.n - self.vs[None, :])
+            )
+
+        def value(self, x, bs):
+            """
+            x: scalar or array-like, shape (m,)
+            bs: array-like, shape (n+1,) — control points
+            returns: scalar (if x was scalar) or array, shape (m,)
+            """
+            x = np.asarray(x, dtype=float)
+            assert np.all(x >= 0.0)
+            assert np.all(x <= 1.0)
+            scalar_input = (x.ndim == 0)
+            basis = self.basis_matrix(x)       # (m, n+1)
+            val = basis @ np.asarray(bs)       # (m,)
+            return val[0] if scalar_input else val
+
+    return (BernPolyBasis,)
 
 
 @app.cell
-def _(bern_poly, np, plt):
+def _(BernPolyBasis, np, plt):
     def viz_bern(n):
+        xs = np.linspace(0.0, 1.0, 250)
+    
+        bp = BernPolyBasis(n)
+        basis_matrix = bp.basis_matrix(xs)
+    
         fig = plt.figure()
         plt.xlabel(r"$\phi_0 := P/P_0$")
         plt.ylabel(r"$b_{\nu, n}(\phi_0)$")
-        xs = np.linspace(0.0, 1.0, 250)
         for v in range(n+1):
-            plt.plot(xs, [bern_poly(x, v, n) for x in xs], label=rf"$\nu={v}$")
+            plt.plot(xs, basis_matrix[:, v], label=rf"$\nu={v}$")
         plt.legend()
         plt.title(rf"$n={n}$")
         plt.tight_layout()
@@ -771,19 +786,17 @@ def _(bern_poly, np, plt):
 
 
 @app.cell
-def _(bern_poly, colors, mpl, np, plt):
+def _(BernPolyBasis, colors, mpl, np, plt):
     class WaterAdsorptionIsotherm:
         def __init__(
-            self, n, Tref=25.0, w_max=0.5, bs=None, p_ovr_p0_max=1.0
+            self, n, Tref=25.0, w_max=0.5, bs=None
         ):
             # number of control points
             self.n = n
+            self.bp = BernPolyBasis(n)
 
             # max water ads [kg H2O/kg MOF]
             self.w_max = w_max
-
-            # max RH (at Tref) to model
-            self.p_ovr_p0_max = p_ovr_p0_max
 
             # reference temperature [deg. C]
             self.Tref = Tref
@@ -796,7 +809,7 @@ def _(bern_poly, colors, mpl, np, plt):
 
         def copy(self):
             return WaterAdsorptionIsotherm(
-                self.n, Tref=self.Tref, p_ovr_p0_max=self.p_ovr_p0_max,
+                self.n, Tref=self.Tref,
                 w_max=self.w_max, bs=np.copy(self.bs)
             )
 
@@ -819,34 +832,30 @@ def _(bern_poly, colors, mpl, np, plt):
             - T: deg C
             - p/p0(T) : unitless
             """
-            # model: expand adsorption n as a function of phi_ref = p / p0[T_ref]
-            #        with Bernstein polynomial basis functions.
+            # model: expand adsorption n as a function of 
+            #   phi_ref = p / p0[T_ref]
+            #   with Bernstein polynomial basis functions.
             # Polanyi: A = - R T log(p / p0[T])
             #          n = n(A)
             # set A = - RT log(phi) = - R T_ref log(phi_ref)
-            #     cuz we wanna know corresponding phi_ref at T_ref that gives same A at T
-            #        T / T_Ref log(phi) = log(phi_ref)
-            #        log(phi^(T/T_Ref)) = log(phi_ref) 
+            #   cuz we wanna know corresponding phi_ref at
+            #   T_ref that gives same A at T
+            #   so T / T_Ref log(phi) = log(phi_ref)
+            #      log(phi^(T/T_Ref)) = log(phi_ref) 
             p_over_p0_ref = p_over_p0 ** ((T + 273.15) /  (self.Tref + 273.15))
-
-            if p_over_p0_ref > self.p_ovr_p0_max:
-                return self.w_max
-
-            a = 0.0 # amount adsorbed [unitless]
-            x = p_over_p0_ref / self.p_ovr_p0_max
-            for v in range(self.n + 1):
-                a += self.bs[v] * bern_poly(x, v, self.n)
-
-            return a
+        
+            return self.bp.value(p_over_p0_ref, self.bs)
 
         def water_del(self, conditions):
-            w_del = np.zeros(conditions.shape[0])
-            for i, (id, row) in enumerate(conditions.iterrows()):
-                w_ads = self.water_ads(row["ads T [°C]"], row["ads P/P0"])
-                w_des = self.water_ads(row["des T [°C]"], row["des P/P0"])
-                if w_ads > w_des:
-                    w_del[i] = w_ads - w_des
-            return w_del
+            w_ads = self.water_ads(
+                conditions["ads T [°C]"].to_numpy(),
+                conditions["ads P/P0"].to_numpy(),
+            )
+            w_des = self.water_ads(
+                conditions["des T [°C]"].to_numpy(),
+                conditions["des P/P0"].to_numpy(),
+            )
+            return np.where(w_ads > w_des, w_ads - w_des, 0.0)
 
         def water_del_distn(self, weather):
             w_dels = self.water_del(weather.ads_des_conditions)
@@ -858,7 +867,7 @@ def _(bern_poly, colors, mpl, np, plt):
             plt.show()
 
         def get_p_ovr_p0_half_max(self, verbose=False):
-            p_over_p0s = np.linspace(0, self.p_ovr_p0_max, 500)
+            p_over_p0s = np.linspace(0, 1.0, 500)
             ws = np.array(
                 [
                     self.water_ads(self.Tref, p_over_p0)
@@ -872,7 +881,7 @@ def _(bern_poly, colors, mpl, np, plt):
             return p_star
 
         def draw(self):
-            p_over_p0s = np.linspace(0, self.p_ovr_p0_max, 100)
+            p_over_p0s = np.linspace(0, 1.0, 100)
 
             plt.figure()
 
@@ -892,26 +901,21 @@ def _(bern_poly, colors, mpl, np, plt):
 
             sm = plt.cm.ScalarMappable(cmap=colormap, norm=norm)
             plt.colorbar(sm, ax=plt.gca(), label='temperature [°C]')
-            plt.xlim(0, self.p_ovr_p0_max)
+            plt.xlim(0, 1.0)
             plt.ylim(0, self.w_max)
 
+            plt.tight_layout()
+
             plt.show()
+
     return (WaterAdsorptionIsotherm,)
 
 
 @app.cell
-def _(np):
-    np.where(np.random.rand(10) > 0.3)
-    return
-
-
-@app.cell
-def _(WaterAdsorptionIsotherm, plt):
-    wai = WaterAdsorptionIsotherm(10, p_ovr_p0_max=0.5)
+def _(WaterAdsorptionIsotherm):
+    wai = WaterAdsorptionIsotherm(10)
     wai.endow_stepped_isotherm(3)
     wai.draw()
-    plt.tight_layout()
-    plt.show()
     return (wai,)
 
 
@@ -933,6 +937,7 @@ def _(np):
         #   (variance at risk)
         var = np.percentile(water_dels, alpha)
         return np.mean(water_dels[water_dels <= var])
+
     return (score_fitness,)
 
 
@@ -944,40 +949,41 @@ def _(score_fitness, wai, weather):
 
 
 @app.cell
-def _(np):
+def _(gaussian_kde, np):
     def draw_fitness(
         ax, wdels, fitness, color, label, 
         alpha=1/7 * 100, orientation="vertical"
     ):
         var = np.percentile(wdels, alpha)
 
-        n_bins = 25
-        n_lo = max(1, round(n_bins * alpha / 100))
-        n_hi = max(1, n_bins - n_lo)
+        kde = gaussian_kde(wdels)
+        xs = np.linspace(0.0, max(wdels.max(), 0.5), 300)
+        density = kde(xs)
 
-        lo_edges = np.linspace(0.0, var, n_lo + 1)
-        hi_edges = np.linspace(var, 0.5, n_hi + 1)
-
-        # join — drop the duplicate q_val at the join point
-        edges = np.concatenate([lo_edges, hi_edges[1:]])
-
-        ax.hist(
-            wdels[wdels < var],
-            edgecolor=color, facecolor=(color, 0.4),
-            histtype='stepfilled', linewidth=1.5, bins=edges,
-            orientation=orientation
-        )
-        ax.hist(
-            wdels[wdels >= var],
-            edgecolor=color, facecolor=(color, 0.1),
-            histtype='stepfilled', linewidth=1.5, bins=edges, label=label,
-            orientation=orientation
-        )
+        lo_mask = xs < var
+        hi_mask = xs >= var
 
         if orientation == "vertical":
+            ax.plot(xs, density, color=color, linewidth=1.5)
+            ax.fill_between(
+                xs[lo_mask], density[lo_mask], color=color, alpha=0.3
+            )
+            ax.fill_between(
+                xs[hi_mask], density[hi_mask], color=color, alpha=0.1,
+                label=label
+            )
             ax.axvline(fitness, linestyle="--", color=color)
         else:
+            ax.plot(density, xs, color=color, linewidth=1.5)
+            ax.fill_betweenx(
+                xs[lo_mask], density[lo_mask], color=color, alpha=0.4
+            )
+            ax.fill_betweenx(
+                xs[hi_mask], density[hi_mask], color=color, alpha=0.1,
+                label=label
+            )
             ax.axhline(fitness, linestyle="--", color=color)
+
     return (draw_fitness,)
 
 
@@ -1010,22 +1016,10 @@ def _(mo):
 
 
 @app.cell
-def _(wais):
-    wais[0].w_max
-    return
-
-
-@app.cell
-def _(weather):
-    weather.p_ovr_p0_ticks
-    return
-
-
-@app.cell
-def _(draw_rh_distn, my_colors, np, plt, score_fitness):
+def _(draw_rh_distn, my_colors, np, p_ovr_p0_ticks, plt, score_fitness):
     def compare_wais(wais, weather, savetag=""):
         the_colors = [my_colors[0]] + my_colors[3:]
-        p_over_p0s = np.linspace(0, weather.p_ovr_p0_max, 100)
+        p_over_p0s = np.linspace(0, 1.0, 100)
 
         fig = plt.figure(figsize=(6.25, 5), layout="constrained")
         gs = fig.add_gridspec(2, 2, height_ratios=[1, 3], width_ratios=[2, 1])
@@ -1043,7 +1037,7 @@ def _(draw_rh_distn, my_colors, np, plt, score_fitness):
         ###
         axs[1, 0].set_xlabel("$p / [p_0(T)]$")
         axs[0, 0].tick_params(axis='x', labelbottom=False)
-        axs[1, 0].set_xticks(weather.p_ovr_p0_ticks)
+        axs[1, 0].set_xticks(p_ovr_p0_ticks)
         axs[1, 0].tick_params(axis='x', labelrotation=90)
         axs[1, 0].set_ylabel(
             f"water adsorption at {wais[0].Tref:.0f}°C\n[kg H$_2$O/kg sorbent]"
@@ -1100,11 +1094,12 @@ def _(draw_rh_distn, my_colors, np, plt, score_fitness):
         fitness_label = f"fitness:\n{fitness:.2f} kg H$_2$O/kg MOF",
 
         plt.savefig(
-            weather.save_tag + "compare" + savetag + ".pdf",
+            weather.tag + "compare" + savetag + ".pdf",
             format="pdf",  bbox_inches="tight"
         )
 
         plt.show()
+
     return (compare_wais,)
 
 
@@ -1142,7 +1137,7 @@ def _(mo):
 
 
 @app.cell
-def _(my_colors, np, p_over_p0_ticks, plt):
+def _(my_colors, np, p_ovr_p0_ticks, plt):
     def viz_wais(
         wais, savename=None, material_labels=None
     ):
@@ -1150,11 +1145,11 @@ def _(my_colors, np, p_over_p0_ticks, plt):
             material_labels = [f"#{w}" for w in range(len(wais))]
 
         the_colors = [my_colors[0]] + my_colors[3:]
-        p_over_p0s = np.linspace(0, wais[0].p_ovr_p0_max, 100)
+        p_over_p0s = np.linspace(0, 1.0, 100)
 
         fig = plt.figure(figsize=(4.5, 4))
         plt.xlabel("relative humidity $p / [p_0(T)]$")
-        plt.xticks(p_over_p0_ticks)
+        plt.xticks(p_ovr_p0_ticks)
         plt.ylabel(
             f"water adsorption at {wais[0].Tref:.0f}°C\n[kg H$_2$O/kg sorbent]"
         )
@@ -1167,7 +1162,7 @@ def _(my_colors, np, p_over_p0_ticks, plt):
                 label=material_labels[w]
             )
 
-        plt.xlim(0, wais[0].p_ovr_p0_max)
+        plt.xlim(0, 1.0)
         plt.ylim(0, wais[0].w_max)
         plt.legend(title="model material", fontsize=8, title_fontsize=10)
         if savename is not None:
@@ -1175,6 +1170,7 @@ def _(my_colors, np, p_over_p0_ticks, plt):
                 savename + ".pdf", format="pdf",  bbox_inches="tight"
             )
         plt.show()
+
     return (viz_wais,)
 
 
@@ -1200,6 +1196,7 @@ def _(WaterAdsorptionIsotherm, np):
         else:
             wai.endow_random_isotherm()
         return wai
+
     return (random_birth,)
 
 
@@ -1235,6 +1232,7 @@ def _(np):
         wai.bs[wai.bs < 0.0] = 0.0
         wai.bs[wai.bs > wai.w_max] = wai.w_max
         wai.bs[-1] = wai.w_max
+
     return (mutate,)
 
 
@@ -1268,6 +1266,7 @@ def _(np):
         id_a = ids_tourney[ids_winners[0]]
         id_b = ids_tourney[ids_winners[1]]
         return id_a, id_b
+
     return (run_tournament,)
 
 
@@ -1293,6 +1292,7 @@ def _(WaterAdsorptionIsotherm, np):
         return WaterAdsorptionIsotherm(
             wai_a.n, bs=alpha * wai_a.bs + (1 - alpha) * wai_b.bs
         )
+
     return (random_combination,)
 
 
@@ -1336,6 +1336,7 @@ def _(np):
         wai.bs = np.sort(wai.bs)
 
         return wai
+
     return (random_cross_over,)
 
 
@@ -1412,6 +1413,7 @@ def _(score_fitness):
                 fitness = new_fitness
             else:
                 break 
+
     return (ls_stepify,)
 
 
@@ -1507,6 +1509,7 @@ def _(
             mutate(new_wais[id], eps)
 
         return new_wais
+
     return (evolve,)
 
 
@@ -1514,6 +1517,7 @@ def _(
 def _(random_birth):
     def gen_initial_pop(pop_size, n):
         return [random_birth(n) for _ in range(pop_size)]
+
     return (gen_initial_pop,)
 
 
@@ -1580,6 +1584,7 @@ def _(evolve, gen_initial_pop, np, score_fitness):
         best_fitness = np.max(fitnesses)
 
         return fitnesses_gen, best_wai_gen, best_wai, best_fitness
+
     return (do_evolution,)
 
 
@@ -1642,7 +1647,7 @@ def _(fitnesses_gen, pd, plt, sns, weather):
         # )
         plt.tight_layout()
         plt.savefig(
-            weather.save_tag + "fitness_progress.pdf", format="pdf"
+            weather.tag + "fitness_progress.pdf", format="pdf"
         )
         plt.show()
 
@@ -1651,9 +1656,9 @@ def _(fitnesses_gen, pd, plt, sns, weather):
 
 
 @app.cell
-def _(best_wai_gen, colors, mpl, np, p_over_p0_ticks, plt, wais, weather):
+def _(best_wai_gen, colors, mpl, np, p_ovr_p0_ticks, plt, wais, weather):
     def viz_best_wais(best_wai_gen):
-        p_over_p0s = np.linspace(0, best_wai_gen[0].p_ovr_p0_max, 150)
+        p_over_p0s = np.linspace(0, 1.0, 150)
         Tref = best_wai_gen[0].Tref
 
         colormap = mpl.colormaps['crest'] # or 'plasma', 'coolwarm', etc.
@@ -1661,7 +1666,7 @@ def _(best_wai_gen, colors, mpl, np, p_over_p0_ticks, plt, wais, weather):
 
         plt.figure(figsize=(5, 4))
         plt.xlabel("$p/p_0[T]$")
-        plt.xticks(p_over_p0_ticks)
+        plt.xticks(p_ovr_p0_ticks)
         plt.ylabel(
             f"water adsorption at {wais[0].Tref:.0f}°C\n[kg H$_2$O/kg sorbent]"
         )
@@ -1687,7 +1692,7 @@ def _(best_wai_gen, colors, mpl, np, p_over_p0_ticks, plt, wais, weather):
 
         plt.tight_layout()
         plt.savefig(
-            weather.save_tag + "wai_progress.pdf", format="pdf"
+            weather.tag + "wai_progress.pdf", format="pdf"
         )
         plt.show()
 
@@ -1712,7 +1717,10 @@ def get_performance_data(wai, weather, w_low=0.15):
     perf_data["failure"] = perf_data.apply(
         lambda row: row["water del [kg H$_2$O/kg MOF]"] < w_low, axis=1
     )
-    print(f"# failures: ", perf_data["failure"].sum(), " / ", perf_data.shape[0])
+    print(
+        f"# failures: ", 
+        perf_data["failure"].sum(), " / ", perf_data.shape[0]
+    )
     return perf_data
 
 
@@ -1724,58 +1732,50 @@ def _(best_wai, weather):
 
 
 @app.cell
-def _():
-    # best_wai.draw()
-    # plt.tight_layout()
-    # plt.savefig(
-    #     weather.save_tag + "best_wai.pdf", format="pdf"
-    # )
-    # plt.show()
-    return
-
-
-@app.cell
-def _(MaxNLocator, np, time_to_color):
+def _(MaxNLocator, gaussian_kde, idea_to_color, np):
     def draw_rh_distn(ax, weather):
-        p_over_p0_bins = np.linspace(0, 1, 25)
-        ax.hist(
-            weather.ads_des_conditions["des P/P0"], label="release", 
-            bins=p_over_p0_bins, histtype='stepfilled', 
-            edgecolor=time_to_color["night"],
-            facecolor=(time_to_color["night"], 0.25),
-            linewidth=1.5
+        xs = np.linspace(0, 1, 200)
+
+        kde_des = gaussian_kde(weather.ads_des_conditions["des P/P0"])
+        ax.plot(xs, kde_des(xs), color=idea_to_color["night"], linewidth=1.5)
+        ax.fill_between(
+            xs, kde_des(xs), color=idea_to_color["night"], alpha=0.25,
+            label="release"
         )
 
-        ax.hist(
-            weather.ads_des_conditions["ads P/P0"], 
-            label="capture", histtype='stepfilled',
-            bins=p_over_p0_bins, edgecolor=time_to_color["day"],
-            facecolor=(time_to_color["day"], 0.25),
-            linewidth=1.5
+        kde_ads = gaussian_kde(weather.ads_des_conditions["ads P/P0"])
+        ax.plot(xs, kde_ads(xs), color=idea_to_color["day"], linewidth=1.5)
+        ax.fill_between(
+            xs, kde_ads(xs), color=idea_to_color["day"], alpha=0.25,
+            label="capture"
         )
-        ax.set_ylabel("# days")
 
-        ax.yaxis.set_major_locator(MaxNLocator(nbins=3, integer=True))
+        ax.set_ylabel("density")
+        ax.yaxis.set_major_locator(MaxNLocator(nbins=3))
+        ax.set_xlim(0, 1)
         ax.set_ylim(ymin=0.0)
-
         ax.legend(fontsize=12)
+
     return (draw_rh_distn,)
 
 
 @app.cell
 def _(
     MaxNLocator,
+    T_range,
+    T_ticks,
     colors,
     draw_fitness,
     draw_rh_distn,
     mpl,
     my_colors,
     np,
+    p_ovr_p0_ticks,
     plt,
     score_fitness,
 ):
     def draw_opt(best_wai, weather, savetag=""):
-        p_over_p0s = np.linspace(0, best_wai.p_ovr_p0_max, 100)
+        p_over_p0s = np.linspace(0, 1.0, 100)
 
         # fig, axs = plt.subplots(
         #     2, 2, 
@@ -1783,7 +1783,7 @@ def _(
         #     figsize=(5, 7),
         #     layout="constrained"
         # )
-        fig = plt.figure(figsize=(10, 5), layout="constrained")
+        fig = plt.figure(figsize=(7, 5), layout="constrained")
         gs = fig.add_gridspec(2, 2, height_ratios=[1, 3], width_ratios=[2, 1])
         ax00 = fig.add_subplot(gs[0, 0])
         ax10 = fig.add_subplot(gs[1, 0], sharex=ax00) # Only these two share
@@ -1800,14 +1800,14 @@ def _(
         ###
         axs[1, 0].set_xlabel("relative humidity $p / [p_0(T)]$")
         axs[0, 0].tick_params(axis='x', labelbottom=False)
-        axs[1, 0].set_xticks(weather.p_ovr_p0_ticks)
+        axs[1, 0].set_xticks(p_ovr_p0_ticks)
         axs[1, 0].tick_params(axis='x', labelrotation=90)
         axs[1, 0].set_ylabel("water adsorption [kg H$_2$O/kg sorbent]")
 
         colormap = mpl.colormaps['coolwarm'] # or 'plasma', 'coolwarm', etc.
-        norm = colors.Normalize(vmin=weather.T_range[0], vmax=weather.T_range[1])
+        norm = colors.Normalize(vmin=T_range[0], vmax=T_range[1])
 
-        for T in np.linspace(weather.T_range[0], weather.T_range[1], 4):
+        for T in np.linspace(T_range[0], T_range[1], 4):
             axs[1, 0].plot(
                 p_over_p0s, 
                 [best_wai.water_ads(T, p_over_p0) for p_over_p0 in p_over_p0s],
@@ -1822,10 +1822,10 @@ def _(
         cb_ax.axis("off")
         plt.colorbar(
             sm, ax=cb_ax, label='temperature [°C]', 
-            ticks=weather.T_ticks
+            ticks=T_ticks
             # orientation="horizontal"
         )
-        axs[1, 0].set_xlim(0, best_wai.p_ovr_p0_max)
+        axs[1, 0].set_xlim(0, 1.0)
         axs[1, 0].set_ylim(0, best_wai.w_max)
 
         ###
@@ -1856,7 +1856,7 @@ def _(
         #   info
         ###
         # fitness label:
-        fitness_label = f"{weather.loc_title}\n({weather.year} 2023-2025)\nfitness:\n  {fitness:.2f} kg/kg"
+        fitness_label = f"{weather.tag}\nfitness:\n  {fitness:.2f} kg/kg"
         axs[0, 1].text(
             0.0, 0.5,                    # x, y in axes coordinates (0–1)
             fitness_label,
@@ -1867,17 +1867,18 @@ def _(
         )
 
         plt.savefig(
-            weather.save_tag + "best_wai_rich" + savetag + ".pdf",
+            weather.tag + "best_wai_rich" + savetag + ".pdf",
             format="pdf",  bbox_inches="tight"
         )
 
         plt.show()
+
     return (draw_opt,)
 
 
 @app.cell
 def _(best_wai, pickle, weather):
-    pf_name = weather.save_tag + 'opt_isotherm.pkl'
+    pf_name = weather.tag + 'opt_isotherm.pkl'
     with open(pf_name, 'wb') as pf:
         pickle.dump(best_wai, pf)
         print("saved in: ", pf_name)
@@ -1941,7 +1942,7 @@ def _(
             pp.axes[i, i].set_visible(False)
 
         plt.savefig(
-            weather.save_tag + "daily_performance.pdf", format="pdf",
+            weather.tag + "daily_performance.pdf", format="pdf",
             bbox_inches="tight"
         )
 
@@ -1952,7 +1953,7 @@ def _(
 
 
 @app.cell
-def _(colors, mpl, np, p_over_p0_ticks, plt):
+def _(T_range, colors, mpl, np, p_ovr_p0_ticks, plt):
     def viz_water_del(wai, weather, date, savename=""):
         day_data = weather.ads_des_conditions[
             weather.ads_des_conditions["date"].apply(
@@ -1960,16 +1961,16 @@ def _(colors, mpl, np, p_over_p0_ticks, plt):
             )
         ].iloc[0, :]
 
-        p_over_p0s = np.linspace(0, wai.p_ovr_p0_max, 100)
+        p_over_p0s = np.linspace(0, 1.0, 100)
 
         fig = plt.figure(figsize=(4, 3.5))
         plt.xlabel("relative humidity $p / [p_0(T)]$")
-        plt.xticks(p_over_p0_ticks)
-        plt.xlim(0, wai.p_ovr_p0_max)
+        plt.xticks(p_ovr_p0_ticks)
+        plt.xlim(0, 1.0)
         plt.ylabel("water adsorption\n[kg H$_2$O/kg sorbent]")
 
         colormap = mpl.colormaps['coolwarm'] # or 'plasma', 'coolwarm', etc.
-        norm = colors.Normalize(vmin=weather.T_range[0], vmax=weather.T_range[1])
+        norm = colors.Normalize(vmin=T_range[0], vmax=T_range[1])
 
         # capture conditions
         T_night, p_ovr_p0_night = day_data["ads T [°C]"], day_data["ads P/P0"]
@@ -2018,9 +2019,10 @@ def _(colors, mpl, np, p_over_p0_ticks, plt):
 
         if not savename == "":
             plt.savefig(
-                weather.save_tag + savename + ".pdf", format="pdf", bbox_inches="tight"
+                weather.tag + savename + ".pdf", format="pdf", bbox_inches="tight"
             )
         plt.show()
+
     return (viz_water_del,)
 
 
@@ -2125,12 +2127,12 @@ def _(
             plt.gca(), wdels_step, fitness_step, 
             my_colors[6], label="optimal step"
         )
-        # plt.title("water delivery distribution in " + weather.loc_title[:-1])
+        # plt.title("water delivery distribution in " + weather.tag[:-1])
         plt.legend(title="water adsorption isotherm")
 
         plt.tight_layout()
         plt.savefig(
-            weather.save_tag + "step_comparison.pdf", format="pdf"
+            weather.tag + "step_comparison.pdf", format="pdf"
         )
 
         plt.show()
@@ -2140,12 +2142,12 @@ def _(
 
 
 @app.cell
-def _(best_wai, best_wai_step, my_colors, np, p_over_p0_ticks, plt, weather):
+def _(best_wai, best_wai_step, my_colors, np, p_ovr_p0_ticks, plt, weather):
     def compare_opt_wai_and_opt_step_wai(best_wai, best_wai_step):
         plt.figure(figsize=(4, 4))
 
         plt.xlabel("relative humidity $p / [p_0(T)]$")
-        plt.xticks(p_over_p0_ticks)
+        plt.xticks(p_ovr_p0_ticks)
         plt.ylabel(
             f"water adsorption at {best_wai.Tref:.0f}°C\n[kg H$_2$O/kg sorbent]"
         )
@@ -2165,23 +2167,17 @@ def _(best_wai, best_wai_step, my_colors, np, p_over_p0_ticks, plt, weather):
         )
         plt.legend()
 
-        plt.xlim(0, best_wai.p_ovr_p0_max)
+        plt.xlim(0, 1.0)
         plt.ylim(0, best_wai.w_max)
 
         plt.savefig(
-            weather.save_tag + "step_vs_opt_wai.pdf",
+            weather.tag + "step_vs_opt_wai.pdf",
             format="pdf",  bbox_inches="tight"
         )
 
         plt.show()
 
     compare_opt_wai_and_opt_step_wai(best_wai, best_wai_step)
-    return
-
-
-@app.cell
-def _(weather):
-    weather.save_tag
     return
 
 
@@ -2197,7 +2193,7 @@ def _(colors, id_opt_step, mpl, np, plt, step_fitnesses, step_wais, weather):
         Tref = step_wais[0].Tref
         w_max = step_wais[0].w_max
 
-        p_over_p0s = np.linspace(0, step_wais[0].p_ovr_p0_max, 100)
+        p_over_p0s = np.linspace(0, 1.0, 100)
 
         plt.figure()
 
@@ -2217,11 +2213,11 @@ def _(colors, id_opt_step, mpl, np, plt, step_fitnesses, step_wais, weather):
 
         sm = plt.cm.ScalarMappable(cmap=colormap, norm=norm)
         plt.colorbar(sm, ax=plt.gca(), label='fitness [kg H$_2$O/kg MOF]')
-        plt.xlim(0, step_wais[0].p_ovr_p0_max)
+        plt.xlim(0, 1.0)
         plt.ylim(0, w_max)
 
         plt.savefig(
-            weather.save_tag + "step_search.pdf",
+            weather.tag + "step_search.pdf",
             format="pdf",  bbox_inches="tight"
         )
 
@@ -2301,12 +2297,14 @@ def _(mo):
 
 @app.cell
 def _(weather):
-    if "Yuma" in weather.loc_title:
+    if "Yuma" in weather.tag:
         other_city = "Riley"
-    elif "Riley" in weather.loc_title:
+    elif "Riley" in weather.tag:
         other_city = "Yuma"
-    elif "Stovepipe" in weather.loc_title:
+    elif "Stovepipe" in weather.tag:
         other_city = "Riley"
+    else:
+        other_city = "Yuma"
     other_city
     return (other_city,)
 
@@ -2314,15 +2312,9 @@ def _(weather):
 @app.cell
 def _(fig_dir, other_city, pickle, weather):
     with open(fig_dir + f'/{other_city} (May-Sep.)/opt_isotherm.pkl', 'rb') as opf:
-        weather.save_tag + 'opt_isotherm.pkl'
+        weather.tag + 'opt_isotherm.pkl'
         best_wai_other_city = pickle.load(opf)
     return (best_wai_other_city,)
-
-
-@app.cell
-def _(weather):
-    weather.loc_title
-    return
 
 
 @app.cell
@@ -2352,18 +2344,18 @@ def _(
         fig = plt.figure(figsize=(6, 3))
         plt.xlabel("water delivery [kg H$_2$O/kg sorbent]")
         plt.ylabel("# days")
-        draw_fitness(wdels, fitness, my_colors[4], label=weather.loc_title[:-1])
+        draw_fitness(wdels, fitness, my_colors[4], label=weather.tag[:-1])
         draw_fitness(
             wdels_other_city, fitness_other_city, my_colors[6], 
             label=other_city + f", {city_to_state[other_city]}"
         )
-        # plt.title("water delivery distribution in " + weather.loc_title[:-1])
+        # plt.title("water delivery distribution in " + weather.tag[:-1])
         plt.legend(title="isotherm optimized for...")
         plt.yticks([0])
 
         plt.tight_layout()
         plt.savefig(
-            weather.save_tag + "other_city_isotherm_fitness.pdf", format="pdf"
+            weather.tag + "other_city_isotherm_fitness.pdf", format="pdf"
         )
 
         plt.show()
@@ -2374,7 +2366,7 @@ def _(
 
 @app.cell
 def _(weather):
-    weather.save_tag
+    weather.tag
     return
 
 
@@ -2431,11 +2423,6 @@ def _(mo):
     mo.md(r"""
     # shape-matching
     """)
-    return
-
-
-@app.cell
-def _():
     return
 
 
