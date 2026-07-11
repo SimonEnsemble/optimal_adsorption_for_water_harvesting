@@ -1,6 +1,6 @@
 import marimo
 
-__generated_with = "0.23.13"
+__generated_with = "0.17.6"
 app = marimo.App()
 
 
@@ -49,7 +49,6 @@ def _():
         math,
         mo,
         mpl,
-        my_date_format,
         np,
         os,
         pd,
@@ -168,6 +167,29 @@ def _(mo):
 
 @app.cell
 def _():
+    T_range = [0.0, 70.0] # deg C
+    return (T_range,)
+
+
+@app.cell
+def _(T_range, np):
+    T_ticks = np.linspace(
+        T_range[0], T_range[1], 
+        int(np.ceil((T_range[1] - T_range[0]) / 10)) + 1
+    )
+    T_ticks
+    return (T_ticks,)
+
+
+@app.cell
+def _(np):
+    p_ovr_p0_ticks = np.linspace(0, 1, 11)
+    p_ovr_p0_ticks
+    return (p_ovr_p0_ticks,)
+
+
+@app.cell
+def _():
     city_to_state = {
         'Tucson': 'AZ', 
         'Socorro': 'NM', 
@@ -224,63 +246,52 @@ def _(ccrs, cfeature, city_to_coords, plt):
         plt.tight_layout()
         plt.savefig(savename + ".pdf", format="pdf")
         plt.show()
-
     return (viz_cities,)
 
 
 @app.cell
 def _(viz_cities):
-    viz_cities(["Riley"])
-    viz_cities(["Yuma"])
     viz_cities(["Yuma", "Riley"])
-    viz_cities(["Stovepipe"])
-    viz_cities(["Stovepipe", "Riley", "Yuma"])
     return
 
 
 @app.cell
-def _(city_to_state, fig_dir, my_date_format, np, os, pd, plt, time_to_color):
-    class Weather:
+def _(np, os, pd):
+    class WeatherData:
         def __init__(
-            self, months, year, location, time_to_hour={'day': 15, 'night': 5}
+            self, location, month, year, 
+            verbose=True, time_to_hour={'day': 15, 'night': 5}
         ):
-            self.months = months
-            self.year = year
             self.location = location
-
-            print(f"reading {year} {location} weather.")
-            print("\tnighttime adsorption hr: ", time_to_hour["night"])
-            print("\tdaytime harvest hr: ",      time_to_hour["day"])
+            self.month = month
+            self.year = year
+            if verbose:
+                print(f"loc: {location}. month: {month}/{year}")
+                print("\tnighttime adsorption hr: ", time_to_hour["night"])
+                print("\tdaytime harvest hr: ",      time_to_hour["day"])
 
             self.relevant_weather_cols = [
                 "T_HR_AVG", "RH_HR_AVG", "SUR_TEMP", "SUR_RH_HR_AVG"
-            ] # latter inferred
+            ]
 
-            self.time_to_hour = time_to_hour
+            self.verbose = verbose
+            self.raw_data = None
+            self.ads_des_conditions = None
 
-            self._read_raw_weather_data()
-            self._remove_rainy_days()
-
+            self._read_raw_data()
             self._filter_missing()
+            self._process_datetimes()
+            self._remove_rainy_days()
+            self._infer_surface_RH()
+            self._prune_raw_data()
+        
+            self.time_to_hour = time_to_hour
+            self._attach_ads_des_conditions()
 
-            self._process_datetime_and_filter()
-
-            self._minimalize_raw_data()
-
-            self._day_night_data()
-
-            self._gen_ads_des_conditions()
-            self._compute_p_ovr_p0_max()
-            self._compute_T_range()
-
-            # for plots
-            self.loc_title = f"{location}, {city_to_state[location]}."
-            self.save_tag = fig_dir + f"/{self.location}_"
-
-        def _read_raw_weather_data(self):
+        def _read_raw_data(self):
+            # search for unique relevant file
             wdata_dir = "data/"
             wfiles = os.listdir(wdata_dir)
-            assert [self.location in wfile for wfile in wfiles]
 
             filename = list(
                 filter(
@@ -290,8 +301,10 @@ def _(city_to_state, fig_dir, my_date_format, np, os, pd, plt, time_to_color):
             )
             assert len(filename) == 1
             filename = wdata_dir + "/" + filename[0]
-            print(f"\t...reading weather data from {filename}")
+            if self.verbose:
+                print(f"\treading raw data from {filename}")
 
+            # column names
             names = open(wdata_dir + "/headers.txt", "r").readlines()[1].split()
 
             self.raw_data = pd.read_csv(
@@ -301,17 +314,7 @@ def _(city_to_state, fig_dir, my_date_format, np, os, pd, plt, time_to_color):
                 sep='\s+'
             )
 
-        def _remove_rainy_days(self):
-            print("removing rainy days")
-            rain_group_by_day = self.raw_data.groupby("LST_DATE")["P_CALC"]
-
-            print("\t# rainy days: ", (rain_group_by_day.sum() > 0.0).sum())
-
-            ids = rain_group_by_day.transform("sum") == 0.0
-
-            self.raw_data = self.raw_data[ids]
-
-        def _process_datetime_and_filter(self):
+        def _process_datetimes(self):
             # convert to pandas datetime
             self.raw_data["date"] = pd.to_datetime(self.raw_data["LST_DATE"])
 
@@ -319,22 +322,53 @@ def _(city_to_state, fig_dir, my_date_format, np, os, pd, plt, time_to_color):
             self.raw_data = self.raw_data[
                 self.raw_data["date"].dt.year == self.year
             ] # keep only 2024
-
+        
             # get hours
             self.raw_data["time"] = [
                 pd.Timedelta(hours=h) for h in self.raw_data["LST_TIME"] / 100
             ]
-            self.raw_data["datetime"] = self.raw_data["date"] + self.raw_data["time"]
+        
+            self.raw_data["datetime"] = (
+                self.raw_data["date"] + self.raw_data["time"]
+            )
 
             # filter by month
             self.raw_data = self.raw_data.loc[
-                [m in self.months for m in self.raw_data["datetime"].dt.month]
+                self.raw_data["datetime"].dt.month == self.month
+            ]
+    
+        def _remove_rainy_days(self):
+            self.raw_data["rain_daily_total"] = (
+                self.raw_data.groupby("LST_DATE")["P_CALC"].transform("sum")
+            )
+        
+            if self.verbose:
+                n_rainy_days = (
+                    self.raw_data.loc[
+                        self.raw_data["rain_daily_total"] > 0, "LST_DATE"
+                    ].nunique()
+                )
+                print(f"\tremoved {n_rainy_days} rainy days")
+            
+            self.raw_data = self.raw_data[
+                self.raw_data["rain_daily_total"] == 0.0
             ]
 
-            self._infer_surface_RH()
+        def _filter_missing(self):
+            ids_bad = self.raw_data["T_HR_AVG"] < -999.0
+            n_bad = np.sum(ids_bad)
+            if n_bad > 0:
+                print(f"\tfiltering {n_bad} missing rows in raw data")
+                self.raw_data = self.raw_data[~ ids_bad]
+
+        def _prune_raw_data(self):
+            self.raw_data = self.raw_data[
+                ["datetime"] + self.relevant_weather_cols
+            ]
 
         def _infer_surface_RH(self):
-            # compute new relative humidity at surface temperature, for heated air
+            # compute new relative humidity at surface temperature, 
+            #     for heated air
             # partial pressure @ ambient:
             #      RH * p0(T)
             #         =
@@ -347,124 +381,32 @@ def _(city_to_state, fig_dir, my_date_format, np, os, pd, plt, time_to_color):
                 axis=1
             )
 
-        def viz_timeseries(
-            self, save=False, incl_legend=True, 
-            legend_dx=0.0, legend_dy=0.0, plot_lines=False
-        ):
-            place_to_color = {'air': "k", 'surface': "k"}
-
-            fig, axs = plt.subplots(2, 1, sharex=True)#, figsize=(6.4*0.8, 4.8*.8))
-            plt.xticks(rotation=90, ha='center')
-            n_days = len(self.wdata["night"]["datetime"])
-            # axs[1].xaxis.set_major_locator(
-            #     mdates.AutoDateLocator(minticks=n_days-1, maxticks=n_days+1)
-            # )
-
-            axs[0].set_title(self.loc_title + f" ({self.year} 2023-2025)")
-
-            # T
-            if plot_lines:
-                axs[0].plot(
-                    self.raw_data["datetime"], self.raw_data["T_HR_AVG"], 
-                    label="bulk air", color=place_to_color["air"], linewidth=2
-                )
-                axs[0].plot(
-                    self.raw_data["datetime"], self.raw_data["SUR_TEMP"], 
-                    label="soil surface", color=place_to_color["surface"], linewidth=2, linestyle="--"
-                )
-            axs[0].set_ylabel("temperature\n[°C]")
-            axs[0].scatter(
-                self.wdata["night"]["datetime"], self.wdata["night"]["T_HR_AVG"],
-                edgecolors="black", clip_on=False,
-                marker="^", color=time_to_color["night"], zorder=10, label="adsorption\nconditions", 
-                s=25
-            ) # nighttime air temperature
-            axs[0].scatter(
-                self.wdata["day"]["datetime"], self.wdata["day"]["SUR_TEMP"],
-                edgecolors="black", clip_on=False,
-                marker="v", color=time_to_color["day"], zorder=10, label="desorption\nconditions",
-                s=25
-            ) # daytime surface temperature
-            # axs[0].set_title(self.location)
-            axs[0].set_ylim(self.T_range[0], self.T_range[1])
-            axs[0].set_yticks(self.T_ticks)
-            axs[0].set_xlim(
-                self.raw_data["datetime"].min(), 
-                self.raw_data["datetime"].max()
-            )
-
-            # RH
-            if plot_lines:
-                axs[1].plot(
-                    self.raw_data["datetime"], self.raw_data["RH_HR_AVG"] / 100, 
-                    color=place_to_color["air"], label="bulk air"
-                )
-                axs[1].plot(
-                    self.raw_data["datetime"], self.raw_data["SUR_RH_HR_AVG"] / 100, 
-                    color=place_to_color["surface"], label="near-surface air", linestyle="--"
-                )
-            axs[1].set_ylabel("relative\nhumidity")
-            axs[1].scatter(
-                self.wdata["night"]["datetime"], self.wdata["night"]["RH_HR_AVG"] / 100,
-                edgecolors="black", clip_on=False,
-                marker="^", color=time_to_color["night"], zorder=10, 
-                s=25,  label="capture conditions"
-            ) # nighttime RH
-            axs[1].scatter(
-                self.wdata["day"]["datetime"], self.wdata["day"]["SUR_RH_HR_AVG"] / 100,
-                edgecolors="black", clip_on=False,
-                marker="v", color=time_to_color["day"], zorder=10, s=25, label="release conditions"
-            ) # day surface RH
-            axs[1].set_yticks(self.p_ovr_p0_ticks)
-            if self.daynight_wdata.shape[0] > 1:
-                axs[1].xaxis.set_major_formatter(my_date_format)
-            if incl_legend:
-                axs[1].legend(
-                    prop={'size': 10}, ncol=1, 
-                    bbox_to_anchor=(0., 1.0 + legend_dy, 1.0 + legend_dx, .1), loc="center"
-                )#, loc="center left")
-
-            # already got legend above
-            if save:
-                plt.savefig(self.save_tag + "weather_timeseries.pdf", format="pdf", bbox_inches="tight")
-
-            plt.show()
-
-        def _minimalize_raw_data(self):
-            self.raw_data = self.raw_data[["datetime"] + self.relevant_weather_cols]
-
-        def _day_night_data(self):
+        def _attach_ads_des_conditions(self):
             # get separate day and night data frames with precise time stamp
-            # useful for checking and for plotting as a time series with all of the data
-            self.wdata = dict()
+            # useful for checking and for plotting as 
+            #    a time series with all of the data
+            wdata = dict()
             for time in ["day", "night"]:
-                self.wdata[time] = self.raw_data[
+                wdata[time] = self.raw_data[
                     self.raw_data["datetime"].dt.hour == self.time_to_hour[time]
-                ]
-
-            ###
-            #   create abstract data frame that removes details of the time
-            #   each row is a day-night cycle
-            ###
-            reduced_wdata = dict()
-            for time in ["day", "night"]:
-                reduced_wdata[time] = self.wdata[time].rename(
-                    columns={col: time + "_" + col for col in self.relevant_weather_cols}
+                ].rename(
+                    columns={
+                        col: time + "_" + col 
+                        for col in self.relevant_weather_cols
+                    }
                 )
-                reduced_wdata[time]["datetime"] = reduced_wdata[time]["datetime"].dt.normalize()
+                wdata[time]["date"] = wdata[time]["datetime"].dt.normalize()
 
-            self.daynight_wdata = pd.merge(
-                reduced_wdata["night"], reduced_wdata["day"],
-                on="datetime", how="inner"
+            self.ads_des_conditions = pd.merge(
+                wdata["night"], wdata["day"],
+                on="date", how="inner"
             )
 
-            self.daynight_wdata.sort_values(by="datetime", inplace=True)
+            self.ads_des_conditions.sort_values(by="date", inplace=True)
 
-        def _gen_ads_des_conditions(self):
-            self.ads_des_conditions = self.daynight_wdata.rename(
+            self.ads_des_conditions = self.ads_des_conditions.rename(
                 columns=
                 {
-                    "datetime": "date",
                     # adsorptin conditions (night)
                     "night_T_HR_AVG": 'ads T [°C]',
                     "night_RH_HR_AVG": 'ads P/P0',
@@ -474,55 +416,116 @@ def _(city_to_state, fig_dir, my_date_format, np, os, pd, plt, time_to_color):
                 }
             )
             for rh_col in ['des P/P0', 'ads P/P0']:
-                self.ads_des_conditions[rh_col] = self.ads_des_conditions[rh_col] / 100.0
+                self.ads_des_conditions[rh_col] = (
+                    self.ads_des_conditions[rh_col] / 100.0
+                )
 
             self.ads_des_conditions = self.ads_des_conditions[
                 ['date', 'ads T [°C]', 'ads P/P0', 'des T [°C]', 'des P/P0']
             ]
 
-        def _compute_p_ovr_p0_max(self):
-            # print("warning: keeping p/p0 max at 1!")
-            self.p_ovr_p0_max =  1.0
-            print("p/p0 max manually set: ", self.p_ovr_p0_max)
-            # self.p_ovr_p0_max = np.ceil(
-            #     self.ads_des_conditions[
-            #         ["ads P/P0", "des P/P0"]
-            #     ].max().max() * 10.0
-            # ) / 10.0
-            self.p_ovr_p0_ticks = np.linspace(
-                0, self.p_ovr_p0_max, int(np.ceil(self.p_ovr_p0_max * 10)) + 1
+            self.ads_des_conditions["location"] = self.location
+
+        def sees_ice(self):
+            return self.ads_des_conditions[
+                ["ads T [°C]", "des T [°C]"]
+            ].min().min() < 0.0
+    return (WeatherData,)
+
+
+@app.cell
+def _(WeatherData):
+    wdata = WeatherData("Yuma", 7, 2024)
+    wdata.ads_des_conditions
+    return
+
+
+@app.cell
+def _(T_range, pd, plt, time_to_color):
+    class Weather:
+        def __init__(
+            self, weather_datas, tag
+        ):
+            self.tag = tag
+        
+            self.ads_des_conditions = (
+                pd.concat(
+                    [w.ads_des_conditions for w in weather_datas], 
+                    ignore_index=True
+                ).sort_values("date").reset_index(drop=True)
             )
 
-        def _compute_T_range(self):
+            n_rows = self.ads_des_conditions.shape[0]
+
+            assert self.ads_des_conditions["date"].nunique() == n_rows
+
+            self._assert_in_T_range()
+   
+        def viz_timeseries(
+            self, save=False, incl_legend=True, 
+            legend_dx=0.0, legend_dy=0.0
+        ):
+            ads = {'air': "k", 'surface': "k"}
+
+            fig, axs = plt.subplots(2, 1, sharex=True)
+            plt.xticks(rotation=90, ha='center')
+
+            ###
+            #   temperature
+            ###
+            axs[0].set_ylabel("temperature\n[°C]")
+            for ads_des in ["ads", "des"]:
+                axs[0].scatter(
+                    self.ads_des_conditions["date"], 
+                    self.ads_des_conditions[f"{ads_des} T [°C]"],
+                    edgecolors="black", clip_on=False,
+                    marker="^", 
+                    color=time_to_color[ads_des], zorder=10, 
+                    label=ads_des, 
+                    s=25
+                )
+
+            ###
+            #   relative humidity
+            ###
+            axs[1].set_ylabel("relative\nhumidity")
+            for ads_des in ["ads", "des"]:
+                axs[1].scatter(
+                    self.ads_des_conditions["date"], 
+                    self.ads_des_conditions[f"{ads_des} P/P0"],
+                    edgecolors="black", clip_on=False,
+                    marker="v", 
+                    color=time_to_color[ads_des], zorder=10, 
+                    label=ads_des, 
+                    s=25
+                )
+            axs[1].legend(
+                    prop={'size': 10}, ncol=1, 
+                    bbox_to_anchor=(0., 1.0 + legend_dy, 1.0 + legend_dx, .1),
+                   loc="center left"
+            )#, loc="center left")
+
+            plt.show()
+
+        def _assert_in_T_range(self):
             T_min = self.ads_des_conditions[
                 ["ads T [°C]", "des T [°C]"]
             ].min().min()
-            T_min = np.floor(T_min / 10) * 10
-
             T_max = self.ads_des_conditions[
                 ["ads T [°C]", "des T [°C]"]
             ].max().max()
-            T_max = np.ceil(T_max / 10) * 10
-
+    
             # manually set
-            if T_min < 0.0 or T_max > 70.0:
+            if T_min < T_range[0] or T_max > T_range[1]:
                 print([T_min, T_max])
-                raise Exception("extend Tmin Tmax")
-
-            T_min = 0.0
-            T_max = 70.0
-            self.T_range = [T_min, T_max]
-            self.T_ticks = np.linspace(
-                T_min, T_max, int(np.ceil((T_max - T_min) / 10)) + 1
-            )
-
-        def _filter_missing(self):
-            print("filtering # missing in raw: ", 
-                  np.sum(self.raw_data["T_HR_AVG"] < -999.0)
-            )
-            self.raw_data = self.raw_data[self.raw_data["T_HR_AVG"] > -999.0]
-
+                raise Exception("extend T_range")
     return (Weather,)
+
+
+@app.cell
+def _(weather):
+    weather.viz_timeseries()
+    return
 
 
 @app.cell(hide_code=True)
@@ -531,61 +534,6 @@ def _(mo):
     for combining weather in different cities.
     """)
     return
-
-
-@app.cell
-def _(Weather, city_to_state, fig_dir, pd):
-    class ManualWeather(Weather):
-        def __init__(
-            self, weathers, months, year, location, time_to_hour={'day': 15, 'night': 5}
-        ):
-            self.months = months
-            self.year = year
-            self.location = location
-            self.time_to_hour = time_to_hour
-            self.relevant_weather_cols = [
-                "T_HR_AVG", "RH_HR_AVG", "SUR_TEMP", "SUR_RH_HR_AVG"
-            ]
-
-            # --- Combine raw_data ---
-            self.raw_data = (
-                pd.concat([w.raw_data for w in weathers], ignore_index=True)
-                .sort_values("datetime")
-                .reset_index(drop=True)
-            )
-
-            # --- Combine wdata (day/night dicts) ---
-            self.wdata = {
-                time: (
-                    pd.concat([w.wdata[time] for w in weathers], ignore_index=True)
-                    .sort_values("datetime")
-                    .reset_index(drop=True)
-                )
-                for time in ["day", "night"]
-            }
-
-            # --- Combine daynight_wdata ---
-            self.daynight_wdata = (
-                pd.concat([w.daynight_wdata for w in weathers], ignore_index=True)
-                .sort_values("datetime")
-                .reset_index(drop=True)
-            )
-
-            # --- Combine ads_des_conditions ---
-            self.ads_des_conditions = (
-                pd.concat([w.ads_des_conditions for w in weathers], ignore_index=True)
-                .sort_values("date")
-                .reset_index(drop=True)
-            )
-
-            # --- Recompute derived plot attributes ---
-            self._compute_p_ovr_p0_max()
-            self._compute_T_range()
-
-            self.loc_title = f"{location}, {city_to_state[location]}."
-            self.save_tag = fig_dir + f"/{self.location}_"
-
-    return (ManualWeather,)
 
 
 @app.cell(hide_code=True)
@@ -600,111 +548,70 @@ def _(mo):
 
 
 @app.cell
-def _(ManualWeather, Weather, all_yrs, fig_dir, os, random):
-    def combined_weather(which):
-        summer_months = [6, 7, 8] # meterological
-        yrs = [2023, 2024, 2025]
+def _(mo):
+    dropdown = mo.ui.dropdown(
+        options=["Yuma", "Riley", "Yuma & Riley & Stovepipe"], 
+        value="Yuma", label="choose location"
+    )
+    dropdown
+    return (dropdown,)
 
-        if which == "Riley (July)":
-            weathers = [
-                Weather([7], y, "Riley") for y in yrs
-            ]
-            w = ManualWeather(
-                weathers,
-                [7], "July", "Riley"
-            )
-        elif which == "Yuma (July)":
-            weathers = [
-                Weather([7], y, "Yuma") for y in yrs
-            ]
-            w = ManualWeather(
-                weathers,
-                [7], "July", "Yuma"
-            )
-        elif which == "Yuma & Riley (summer)":
-            weathers = []
-            cities = ["Riley", "Yuma"]
-            for yr in yrs:
-                mos = [5, 6, 7, 8, 9]
-                for m in range(len(mos)):
-                    mo = mos.pop(random.randrange(len(mos)))
-                    city = random.choice(cities)
-                    try:
-                        weather = Weather([mo], yr, city)
-                    except Exception as e:
-                        if str(e) == "extend Tmin Tmax":
-                            city = random.choice(cities)
-                            weather = Weather([mo], yr, city)
-                        else:
-                            raise
-                    weathers.append(weather)
 
-            w = ManualWeather(
-                weathers,
-                [6, 7, 8, 9], 
-                "summer", "Yuma & Riley"
-            )
-        elif len(which.split()) == 2:
-            if which.split()[1] == "(summer)":
-                mos = summer_months
-            elif which.split()[1] == "(year-round)":
-                mos = all_yrs
-
-            city = which.split()[0]
-
-            weathers = [
-                Weather(mos, y, city)
-                for y in yrs
-            ]
-
-            w = ManualWeather(
-                weathers,
-                mos, which.split()[1], city
-            )  
-        elif which == "Yuma & Stovepipe Wells & Riley & Mercury":
-            weathers = []
-            cities = ["Riley", "Stovepipe", "Yuma"]
-            for yr in yrs:
-                mos = [6, 7, 8, 9]
-                for m in range(len(mos)):
-                    mo = mos.pop(random.randrange(len(mos)))
-                    city = random.choice(cities)
-                    try:
-                        weather = Weather([mo], yr, city)
-                    except Exception as e:
-                        if str(e) == "extend Tmin Tmax":
-                            city = random.choice(cities)
-                            weather = Weather([mo], yr, city)
-                        else:
-                            raise
-                    weathers.append(weather)
-
-            w = ManualWeather(
-                weathers,
-                all_yrs, 
-                "year-round", "Yuma & Stovepipe Wells & Riley & Mercury"
-            )
-
-        w.save_tag = fig_dir + f"/{which}/"
-        os.makedirs(w.save_tag , exist_ok=True)
-        return w
-
-    return (combined_weather,)
+app._unparsable_cell(
+    r"""
+    weather.
+    """,
+    name="_"
+)
 
 
 @app.cell
-def _(combined_weather):
-    # weather = combined_weather("Yuma (summer)") # step 0.09 RH
-    # weather = combined_weather("Mercury (summer)") # step 0.08 RH
-    # weather = combined_weather("Stovepipe (summer)") # step 0.04 RH
-    # weather = combined_weather("Yuma & Stovepipe Wells & Riley")
-    # weather = combined_weather("Yuma & Stovepipe Wells & Riley & Mercury")
-    # weather = combined_weather("Yuma & Stovepipe Wells & Riley & Mercury")
-    weather = combined_weather("Riley (July)") # step 0.16 RH
-    weather = combined_weather("Yuma & Riley (summer)") 
+def _(random):
+    xx=["Yuma", "Riley", "Stovepipe"]
+    random.shuffle(xx)
+    xx
+    return
+
+
+@app.cell
+def _(Weather, WeatherData, dropdown, random):
+    summer_months = [6, 7, 8] # meterological
+    yrs = [2023, 2024, 2025]
+
+    if dropdown.value == "Yuma":
+        weather_datas = [
+            WeatherData("Yuma", mo, yr) 
+            for mo in summer_months
+            for yr in yrs
+        ]
+    elif dropdown.value == "Yuma & Riley & Stovepipe":
+        weather_datas = []
+        _cities = ["Yuma", "Riley", "Stovepipe"]
+        for yr in yrs:
+            _mos = summer_months.copy()
+            for _i in range(len(_mos)):
+                _mo = _mos.pop(random.randrange(len(_mos)))
+                random.shuffle(_cities)
+                for _city in _cities:
+                    _weather_data = WeatherData(_city, _mo, yr)
+                    if not _weather_data.sees_ice():
+                        weather_datas.append(_weather_data)
+                        break
+                
+    weather =  Weather(
+        # list of weather data
+        weather_datas,
+        # tag
+        dropdown.value
+    )
     weather.ads_des_conditions
-    # weather.raw_data
     return (weather,)
+
+
+@app.cell
+def _(weather):
+    weather.viz_timeseries()
+    return
 
 
 @app.cell
@@ -733,7 +640,18 @@ def _(weather):
 
 
 @app.cell
-def _(ccrs, cfeature, city_to_coords, my_colors, plt, sns, weather):
+def _(
+    T_range,
+    T_ticks,
+    ccrs,
+    cfeature,
+    city_to_coords,
+    my_colors,
+    p_ovr_p0_ticks,
+    plt,
+    sns,
+    weather,
+):
     with sns.plotting_context("notebook", font_scale=1.4):
         short_to_proper_weather_cols = {
             'ads T [°C]': 'capture $T$ [°C]',
@@ -749,6 +667,7 @@ def _(ccrs, cfeature, city_to_coords, my_colors, plt, sns, weather):
                 columns=short_to_proper_weather_cols
             ),
             vars=[short_to_proper_weather_cols[w] for w in weather_cols],
+            hue="location",
             corner=True,
             plot_kws=dict(marker="+", linewidth=1, color=my_colors[0]),
             diag_kws=dict(fill=False, color=my_colors[0]),
@@ -765,17 +684,17 @@ def _(ccrs, cfeature, city_to_coords, my_colors, plt, sns, weather):
             for c in range(4):
                 pp.axes[-1, c].tick_params(axis='x', labelrotation=90)
             for r in [1, 3]:
-                pp.axes[r, 0].set_ylim(weather.T_range)
-                pp.axes[r, 0].set_yticks(weather.T_ticks)
+                pp.axes[r, 0].set_ylim(T_range)
+                pp.axes[r, 0].set_yticks(T_ticks)
 
-            pp.axes[2, 0].set_ylim(0, weather.p_ovr_p0_max)
-            pp.axes[2, 0].set_yticks(weather.p_ovr_p0_ticks)
+            pp.axes[2, 0].set_ylim(0, 1.0)
+            pp.axes[2, 0].set_yticks(p_ovr_p0_ticks)
             for c in [0, 2]:
-                pp.axes[3, c].set_xlim(0, weather.p_ovr_p0_max)
-                pp.axes[3, c].set_xticks(weather.p_ovr_p0_ticks)
+                pp.axes[3, c].set_xlim(0, 1)
+                pp.axes[3, c].set_xticks(p_ovr_p0_ticks)
             for c in [1, 3]:
-                pp.axes[3, c].set_xlim(weather.T_range)
-                pp.axes[3, c].set_xticks(weather.T_ticks)
+                pp.axes[3, c].set_xlim(T_range)
+                pp.axes[3, c].set_xticks(T_ticks)
 
         set_weather_cols_axis(pp)
         fig = pp.fig
@@ -800,11 +719,7 @@ def _(ccrs, cfeature, city_to_coords, my_colors, plt, sns, weather):
         map_ax.add_feature(cfeature.STATES, linewidth=0.5, edgecolor="gray")
         map_ax.set_extent([-125, -110, 30, 50])
 
-        cities = [weather.location]
-        if weather.location == "Yuma & Stovepipe Wells & Riley":
-             cities = ["Yuma", "Stovepipe", "Riley"]
-        if weather.location == "Yuma & Stovepipe Wells & Riley & Mercury":
-             cities = ["Yuma", "Stovepipe", "Riley", "Mercury"]
+        cities = ["Yuma", "Stovepipe", "Riley"]
         for city in cities:
             lon, lat = city_to_coords[city]
             map_ax.plot(lon, lat, marker="*", markersize=20, color=my_colors[0],
@@ -814,7 +729,7 @@ def _(ccrs, cfeature, city_to_coords, my_colors, plt, sns, weather):
 
         plt.tight_layout()
         plt.savefig(
-            weather.save_tag + "ads_des_conditions.pdf", 
+            weather.tag + "ads_des_conditions.pdf", 
             format="pdf"
         )
         plt.show()
@@ -830,18 +745,9 @@ def _(mo):
 
 
 @app.cell
-def _(weather):
-    p_over_p0_max = weather.p_ovr_p0_max
-    p_over_p0_ticks = weather.p_ovr_p0_ticks
-    p_over_p0_max
-    return p_over_p0_max, p_over_p0_ticks
-
-
-@app.cell
 def _(math):
     def bern_poly(x, v, n):
         return math.comb(n, v) * x ** v * (1.0 - x) ** (n - v)
-
     return (bern_poly,)
 
 
@@ -865,10 +771,10 @@ def _(bern_poly, np, plt):
 
 
 @app.cell
-def _(bern_poly, colors, mpl, np, p_over_p0_max, plt):
+def _(bern_poly, colors, mpl, np, plt):
     class WaterAdsorptionIsotherm:
         def __init__(
-            self, n, Tref=25.0, w_max=0.5, bs=None, p_ovr_p0_max=p_over_p0_max
+            self, n, Tref=25.0, w_max=0.5, bs=None, p_ovr_p0_max=1.0
         ):
             # number of control points
             self.n = n
@@ -990,7 +896,6 @@ def _(bern_poly, colors, mpl, np, p_over_p0_max, plt):
             plt.ylim(0, self.w_max)
 
             plt.show()
-
     return (WaterAdsorptionIsotherm,)
 
 
@@ -1028,7 +933,6 @@ def _(np):
         #   (variance at risk)
         var = np.percentile(water_dels, alpha)
         return np.mean(water_dels[water_dels <= var])
-
     return (score_fitness,)
 
 
@@ -1074,7 +978,6 @@ def _(np):
             ax.axvline(fitness, linestyle="--", color=color)
         else:
             ax.axhline(fitness, linestyle="--", color=color)
-
     return (draw_fitness,)
 
 
@@ -1092,7 +995,7 @@ def _(draw_fitness, fitness, my_colors, plt, wai, weather):
     plt.ylabel("# days")
     plt.tight_layout()
 
-    plt.savefig(weather.save_tag + "eg_var.pdf", format="pdf")
+    plt.savefig(weather.tag + "eg_var.pdf", format="pdf")
     plt.show()
     plt.show()
     return
@@ -1202,7 +1105,6 @@ def _(draw_rh_distn, my_colors, np, plt, score_fitness):
         )
 
         plt.show()
-
     return (compare_wais,)
 
 
@@ -1273,7 +1175,6 @@ def _(my_colors, np, p_over_p0_ticks, plt):
                 savename + ".pdf", format="pdf",  bbox_inches="tight"
             )
         plt.show()
-
     return (viz_wais,)
 
 
@@ -1299,7 +1200,6 @@ def _(WaterAdsorptionIsotherm, np):
         else:
             wai.endow_random_isotherm()
         return wai
-
     return (random_birth,)
 
 
@@ -1335,7 +1235,6 @@ def _(np):
         wai.bs[wai.bs < 0.0] = 0.0
         wai.bs[wai.bs > wai.w_max] = wai.w_max
         wai.bs[-1] = wai.w_max
-
     return (mutate,)
 
 
@@ -1369,7 +1268,6 @@ def _(np):
         id_a = ids_tourney[ids_winners[0]]
         id_b = ids_tourney[ids_winners[1]]
         return id_a, id_b
-
     return (run_tournament,)
 
 
@@ -1395,7 +1293,6 @@ def _(WaterAdsorptionIsotherm, np):
         return WaterAdsorptionIsotherm(
             wai_a.n, bs=alpha * wai_a.bs + (1 - alpha) * wai_b.bs
         )
-
     return (random_combination,)
 
 
@@ -1439,7 +1336,6 @@ def _(np):
         wai.bs = np.sort(wai.bs)
 
         return wai
-
     return (random_cross_over,)
 
 
@@ -1516,7 +1412,6 @@ def _(score_fitness):
                 fitness = new_fitness
             else:
                 break 
-
     return (ls_stepify,)
 
 
@@ -1612,7 +1507,6 @@ def _(
             mutate(new_wais[id], eps)
 
         return new_wais
-
     return (evolve,)
 
 
@@ -1620,7 +1514,6 @@ def _(
 def _(random_birth):
     def gen_initial_pop(pop_size, n):
         return [random_birth(n) for _ in range(pop_size)]
-
     return (gen_initial_pop,)
 
 
@@ -1687,7 +1580,6 @@ def _(evolve, gen_initial_pop, np, score_fitness):
         best_fitness = np.max(fitnesses)
 
         return fitnesses_gen, best_wai_gen, best_wai, best_fitness
-
     return (do_evolution,)
 
 
@@ -1867,7 +1759,6 @@ def _(MaxNLocator, np, time_to_color):
         ax.set_ylim(ymin=0.0)
 
         ax.legend(fontsize=12)
-
     return (draw_rh_distn,)
 
 
@@ -1981,7 +1872,6 @@ def _(
         )
 
         plt.show()
-
     return (draw_opt,)
 
 
@@ -2131,7 +2021,6 @@ def _(colors, mpl, np, p_over_p0_ticks, plt):
                 weather.save_tag + savename + ".pdf", format="pdf", bbox_inches="tight"
             )
         plt.show()
-
     return (viz_water_del,)
 
 
