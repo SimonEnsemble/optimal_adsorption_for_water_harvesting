@@ -669,8 +669,8 @@ def _(
             hue_order=mixed_locations if dropdown.value == "mix" else [dropdown.value],
             palette=idea_to_color,
             corner=True,
-            plot_kws=dict(linewidths=1, fill=True, alpha=0.4),
-            diag_kws=dict(linewidths=1, fill=True, alpha=0.4),
+            plot_kws=dict(linewidths=1, fill=True, alpha=0.6),
+            diag_kws=dict(linewidths=1, fill=True, alpha=0.6),
             diag_kind='kde'
         )
 
