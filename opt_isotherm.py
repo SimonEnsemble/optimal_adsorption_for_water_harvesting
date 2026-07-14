@@ -1,6 +1,6 @@
 import marimo
 
-__generated_with = "0.17.6"
+__generated_with = "0.23.14"
 app = marimo.App(width="medium")
 
 
@@ -236,6 +236,13 @@ def _():
 @app.cell
 def _(ccrs, cfeature, city_to_coords, idea_to_color, plt):
     def viz_cities(cities):
+        xy_shift = {
+            "Riley": [6.5, 0],
+            "Stovepipe": [-11., 0.0],
+            "Socorro": [0, 4.5],
+            "Utqiagvik": [0, -4.5]
+        }
+    
         fig, ax = plt.subplots(
             figsize=(4, 4),
             subplot_kw={"projection": ccrs.PlateCarree()}
@@ -247,21 +254,25 @@ def _(ccrs, cfeature, city_to_coords, idea_to_color, plt):
         ax.add_feature(cfeature.BORDERS, linewidth=0.5)
         ax.add_feature(cfeature.COASTLINE)
         ax.add_feature(cfeature.STATES, linewidth=0.5, edgecolor="gray")
-        ax.set_extent([-168, -100, 30, 73])  # USA bounds
+        ax.set_extent([-168, -99, 30, 71])  # USA bounds
 
         for city in cities:
             lon = city_to_coords[city][0]
             lat = city_to_coords[city][1]
             ax.plot(lon, lat, marker="*", markersize=15, color=idea_to_color[city],
-                    transform=ccrs.PlateCarree())
-            ax.text(lon, lat + 1.5, city, fontsize=10, ha="center",
-                    transform=ccrs.PlateCarree())
+                    transform=ccrs.PlateCarree()
+            )
+            ax.text(lon + xy_shift[city][0], lat + xy_shift[city][1], city, fontsize=14, ha="center", va="center",
+                    transform=ccrs.PlateCarree(), 
+                    bbox=dict(facecolor="white", alpha=0.7, edgecolor="none", boxstyle="round,pad=0.2")
+            )
         savename = "figs/map"
         for city in cities:
             savename = savename + "_" + city
         plt.tight_layout()
         plt.savefig(savename + ".pdf", format="pdf")
         plt.show()
+
     return (viz_cities,)
 
 
@@ -509,6 +520,7 @@ def _(T_range, idea_to_color, np, os, pd, plt):
             return self.ads_des_conditions[
                 ["ads T [°C]", "des T [°C]"]
             ].min().min() < 0.0
+
     return (WeatherData,)
 
 
@@ -561,6 +573,7 @@ def _(T_range, pd):
             if T_min < T_range[0] or T_max > T_range[1]:
                 print([T_min, T_max])
                 raise Exception("extend T_range")
+
     return (Weather,)
 
 
@@ -611,6 +624,7 @@ def _(WeatherData, np, too_many_missing):
                     wdata = WeatherData(location, [mo], yr)
                     weather_datas.append(wdata)
         return weather_datas
+
     return (get_weather_datas,)
 
 
@@ -769,6 +783,7 @@ def _(comb, np):
             basis = self.basis_matrix(x)       # (m, n+1)
             val = basis @ np.asarray(bs)       # (m,)
             return val[0] if scalar_input else val
+
     return (BernPolyBasis,)
 
 
@@ -934,6 +949,7 @@ def _(BernPolyBasis, colors, inset_axes, mpl, np, plt):
             plt.tight_layout()
 
             plt.show()
+
     return (WaterAdsorptionIsotherm,)
 
 
@@ -970,7 +986,7 @@ def get_monthly_totals(wai, weather):
         .groupby(["location", weather.ads_des_conditions["date"].dt.to_period("M")])["water del [kg H$_2$O/kg MOF]"]
         .sum()
     )
-    
+
     return monthly_totals
 
 
@@ -986,6 +1002,7 @@ def _(np):
         val_at_risk = np.percentile(scores, alpha)
         cval_at_risk = np.mean(scores[scores <= val_at_risk])
         return val_at_risk, cval_at_risk
+
     return (var_cvar,)
 
 
@@ -1005,6 +1022,7 @@ def _(alpha, var_cvar):
         val_at_risk, cval_at_risk = var_cvar(scores, alpha)
 
         return scores, cval_at_risk
+
     return (score_fitness,)
 
 
@@ -1038,6 +1056,7 @@ def _(matplotlib, np):
         ax.set_ylim(ymin=0.0)
 
         ax.axvline(fitness, linestyle="--", color=color)
+
     return (draw_fitness_ax,)
 
 
@@ -1059,6 +1078,7 @@ def _(draw_fitness_ax, idea_to_color, plt, score_fitness):
 
         # plt.savefig(weather.tag + "eg_var.pdf", format="pdf")
         plt.show()
+
     return (draw_fitness_scores,)
 
 
@@ -1091,7 +1111,7 @@ def _(
                 "water del [kg H$_2$O/kg MOF]": "total water delivered\n[kg H$_2$O/kg MOF]"
             }
         )
-    
+
         sns.swarmplot(
             data=monthly_totals, 
             y="total water delivered\n[kg H$_2$O/kg MOF]", 
@@ -1168,6 +1188,7 @@ def _(draw_fitness_ax, my_colors, np, p_ovr_p0_ticks, plt, score_fitness):
             draw_fitness_ax(ax_top, scores, fitness, the_colors[w], label=w)
 
         plt.show()
+
     return (compare_wais,)
 
 
@@ -1239,6 +1260,7 @@ def _(my_colors, np, p_ovr_p0_ticks, plt):
                 savename + ".pdf", format="pdf",  bbox_inches="tight"
             )
         plt.show()
+
     return (viz_wais,)
 
 
@@ -1264,6 +1286,7 @@ def _(WaterAdsorptionIsotherm, np):
         else:
             wai.endow_random_isotherm()
         return wai
+
     return (random_birth,)
 
 
@@ -1299,6 +1322,7 @@ def _(np):
         wai.bs[wai.bs < 0.0] = 0.0
         wai.bs[wai.bs > wai.w_max] = wai.w_max
         wai.bs[-1] = wai.w_max
+
     return (mutate,)
 
 
@@ -1332,6 +1356,7 @@ def _(np):
         id_a = ids_tourney[ids_winners[0]]
         id_b = ids_tourney[ids_winners[1]]
         return id_a, id_b
+
     return (run_tournament,)
 
 
@@ -1357,6 +1382,7 @@ def _(WaterAdsorptionIsotherm, np):
         return WaterAdsorptionIsotherm(
             wai_a.n, bs=alpha * wai_a.bs + (1 - alpha) * wai_b.bs
         )
+
     return (random_combination,)
 
 
@@ -1400,6 +1426,7 @@ def _(np):
         wai.bs = np.sort(wai.bs)
 
         return wai
+
     return (random_cross_over,)
 
 
@@ -1476,6 +1503,7 @@ def _(score_fitness):
                 fitness = new_fitness
             else:
                 break 
+
     return (ls_stepify,)
 
 
@@ -1571,6 +1599,7 @@ def _(
             mutate(new_wais[id], eps)
 
         return new_wais
+
     return (evolve,)
 
 
@@ -1578,6 +1607,7 @@ def _(
 def _(random_birth):
     def gen_initial_pop(pop_size, n):
         return [random_birth(n) for _ in range(pop_size)]
+
     return (gen_initial_pop,)
 
 
@@ -1645,6 +1675,7 @@ def _(evolve, gen_initial_pop, np, score_fitness):
         best_scores, best_fitness = score_fitness(best_wai, weather)
 
         return fitnesses_gen, best_wai_gen, best_wai, best_scores, best_fitness
+
     return (do_evolution,)
 
 
@@ -1955,6 +1986,7 @@ def _(T_range, colors, mpl, np, p_ovr_p0_ticks, plt):
                 weather.tag + savename + ".pdf", format="pdf", bbox_inches="tight"
             )
         plt.show()
+
     return (viz_water_del,)
 
 
