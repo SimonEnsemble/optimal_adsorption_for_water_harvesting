@@ -35,12 +35,13 @@ def _():
     theme = load_theme("scientific")
     theme.set_transforms(trim=True)
     theme.apply()
+    figsize = [6.4*0.85, 4.8*0.85]
     plt.rcParams.update(
         {
             'font.size': 14,
             'axes.titleweight': 'normal',
             'figure.titleweight': 'normal',
-            'figure.figsize': [6.4*0.85, 4.8*0.85]
+            'figure.figsize': figsize
         }
     )
     # date format
@@ -53,6 +54,7 @@ def _():
         colors,
         comb,
         datetime,
+        figsize,
         inset_axes,
         matplotlib,
         mo,
@@ -91,12 +93,18 @@ def _(my_colors, theme_colors):
         "Stovepipe": theme_colors[1],
         "Socorro": theme_colors[2],
         "Utqiagvik": theme_colors[4],
-        "fitness": theme_colors[3],
-        "step": theme_colors[-1]
+        "fitness": theme_colors[-1],
+        "step": my_colors[-1]
     }
     idea_to_color["ads"] = idea_to_color["night"]
     idea_to_color["des"] = idea_to_color["day"]
     return (idea_to_color,)
+
+
+@app.cell
+def _(idea_to_color, mixed_locations, sns):
+    sns.color_palette([idea_to_color[city] for city in mixed_locations])
+    return
 
 
 @app.cell
@@ -653,6 +661,12 @@ def _(Weather, dropdown, get_weather_datas):
 
 
 @app.cell
+def _(os, weather):
+    os.makedirs(weather.tag, exist_ok=True)
+    return
+
+
+@app.cell
 def _(weather):
     for wmetric in ["ads T [°C]", "des T [°C]", "ads P/P0", "des P/P0"]:
         print(wmetric)
@@ -680,6 +694,7 @@ def _(
     p_ovr_p0_ticks,
     plt,
     sns,
+    weater,
     weather,
 ):
     with sns.plotting_context("notebook", font_scale=1.25):
@@ -749,10 +764,11 @@ def _(
         for c in range(4):
             pp.axes[-1, c].xaxis.labelpad = 5
 
-        # plt.savefig(
-        #     weather.tag + "ads_des_conditions.pdf", 
-        #     format="pdf"
-        # )
+        if weater.tag == "mix":
+            plt.savefig(
+                weather.tag + "/ads_des_conditions.pdf", 
+                format="pdf"
+            )
         plt.show()
     return set_weather_cols_axis, short_to_proper_weather_cols, weather_cols
 
@@ -940,7 +956,7 @@ def _(BernPolyBasis, colors, inset_axes, mpl, np, plt):
 
             fig, ax = plt.subplots()
 
-            plt.xlabel("relative humidity $p / [p_0(T)]$")
+            plt.xlabel("relative humidity, $p / [p_0(T)]$")
             plt.ylabel("water adsorption\n[kg H$_2$O/kg sorbent]")
 
             colormap = mpl.colormaps['coolwarm'] # or 'plasma', 'coolwarm', etc.
@@ -957,7 +973,7 @@ def _(BernPolyBasis, colors, inset_axes, mpl, np, plt):
             sm = plt.cm.ScalarMappable(cmap=colormap, norm=norm)
             cax = inset_axes(
                 ax, width="4%", height="60%", loc="lower right",
-                bbox_to_anchor=(-0.05, 0.2, 0.9, 0.95),  # (x0, y0, width, height) in axes fraction
+                bbox_to_anchor=(-0.05, 0.05, 0.9, 0.95),  # (x0, y0, width, height) in axes fraction
                 bbox_transform=ax.transAxes, borderpad=0
             )
             cbar = fig.colorbar(sm, cax=cax)
@@ -1106,6 +1122,12 @@ def _(draw_fitness_ax, idea_to_color, plt, score_fitness):
 
 
 @app.cell
+def _(alpha):
+    alpha
+    return
+
+
+@app.cell
 def _(draw_fitness_scores, wai, weather):
     draw_fitness_scores(wai, weather)
     return
@@ -1123,7 +1145,7 @@ def _(
     wai,
     weather,
 ):
-    def viz_monthly_water_del(wai, weather, legend_outside=dropdown.value == "mix"):
+    def viz_monthly_water_del(wai, weather, legend_outside=dropdown.value=="mix", savename=None):
         monthly_totals = get_monthly_totals(wai, weather).reset_index()
         monthly_totals["month"] = monthly_totals["date"].dt.month
         fitness = var_cvar(monthly_totals["water del [kg H$_2$O/kg MOF]"].values, alpha)[1]
@@ -1131,31 +1153,51 @@ def _(
         # rename for seaborn
         monthly_totals = monthly_totals.rename(
             columns = {
-                "water del [kg H$_2$O/kg MOF]": "monthly water delivery\n[kg H$_2$O/kg MOF]"
+                "water del [kg H$_2$O/kg MOF]": "monthly water delivery\n[kg H$_2$O/kg sorbent]"
             }
         )
 
-        sns.swarmplot(
+        ax = sns.swarmplot(
             data=monthly_totals, 
-            y="monthly water delivery\n[kg H$_2$O/kg MOF]", 
+            y="monthly water delivery\n[kg H$_2$O/kg sorbent]", 
             x="month", 
             palette=idea_to_color,
             hue="location",
             size=10
         )
+        plt.title(f"{alpha:.0f}%-CVaR: {fitness:.1f} kg H$_2$O/kg sorbent")
 
         mos = monthly_totals["month"].unique()
-        plt.xticks(range(len(mos)), [calendar.month_name[mo] for mo in mos])
+        plt.xticks(range(len(mos)), [calendar.month_abbr[mo] for mo in mos], fontsize=14)
 
-        plt.axhline(fitness, color=idea_to_color["fitness"], linestyle="--", zorder=0)
+        cvar_line = plt.axhline(fitness, color=idea_to_color["fitness"], linestyle="--", zorder=0, label="CVaR")
         plt.ylim([0, 16])
+
         if legend_outside:
-            plt.legend(
+            # Grab the location legend's handles/labels before they get overwritten
+            location_handles, location_labels = ax.get_legend_handles_labels()
+            # The last handle/label is the axhline ("CVaR"); split it off
+            location_handles, location_labels = location_handles[:-1], location_labels[:-1]
+        
+            location_legend = ax.legend(
+                location_handles, location_labels,
                 title="location",
                 bbox_to_anchor=(1.02, 1),
                 loc="upper left",
                 borderaxespad=0
             )
+            ax.add_artist(location_legend)  # keep this legend from being overwritten
+
+            ax.legend(
+                [cvar_line], ["CVaR"],
+                bbox_to_anchor=(1.02, 0.4),
+                loc="upper left",
+                borderaxespad=0
+            )
+
+        if savename:
+            plt.savefig(savename + ".pdf", format="pdf", bbox_inches='tight')
+    
         plt.show()
 
     viz_monthly_water_del(wai, weather)
@@ -1277,7 +1319,7 @@ def _(my_colors, np, p_ovr_p0_ticks, plt):
 
         plt.xlim(0, 1.0)
         plt.ylim(0, wais[0].w_max)
-        plt.legend(title="model material", fontsize=8, title_fontsize=10)
+        plt.legend(title="model material", fontsize=12, title_fontsize=12)
         if savename is not None:
             plt.savefig(
                 savename + ".pdf", format="pdf",  bbox_inches="tight"
@@ -1765,7 +1807,7 @@ def _(mo):
 
 
 @app.cell
-def _(fitnesses_gen, pd, plt, sns):
+def _(alpha, figsize, fitnesses_gen, pd, plt, sns):
     def viz_fitness_progress(fitnesses_gen):
         data = pd.DataFrame(
             [
@@ -1776,7 +1818,7 @@ def _(fitnesses_gen, pd, plt, sns):
             columns=['generation', 'fitness [kg H$_2$O/kg sorbent]']
         )
 
-        fig, ax = plt.subplots(figsize=(6, 4))
+        fig, ax = plt.subplots(figsize=[figsize[0]*1.1, figsize[1]])
 
         sns.stripplot(
             data, 
@@ -1784,6 +1826,7 @@ def _(fitnesses_gen, pd, plt, sns):
             hue="generation", color="C2", palette="crest", legend=False,
             ax=ax, clip_on=False
         )
+        plt.ylabel(f"best {alpha:.0f}%-CVaR\n[kg H$_2$O/kg sorbent]")
         plt.tick_params(axis='x', labelrotation=90)
         # plt.axhline(
         #     y=step_fitnesses[id_opt_step], 
@@ -1809,8 +1852,8 @@ def _(best_wai_gen, colors, mpl, np, p_ovr_p0_ticks, plt, wais, weather):
         colormap = mpl.colormaps['crest'] # or 'plasma', 'coolwarm', etc.
         norm = colors.Normalize(vmin=0, vmax=len(best_wai_gen))
 
-        plt.figure(figsize=(5, 4))
-        plt.xlabel("$p/p_0[T]$")
+        plt.figure()
+        plt.xlabel("relative humidity, $p/p_0[T]$")
         plt.xticks(p_ovr_p0_ticks)
         plt.ylabel(
             f"water adsorption at {wais[0].Tref:.0f}°C\n[kg H$_2$O/kg sorbent]"
@@ -1828,7 +1871,7 @@ def _(best_wai_gen, colors, mpl, np, p_ovr_p0_ticks, plt, wais, weather):
         sm = plt.cm.ScalarMappable(cmap=colormap, norm=norm)
         # sm.set_array([]) # Required for matplotlib versions < 3.4
         cb_ax = plt.gca().inset_axes(
-            [0.7, 0.2, 0.2, 0.6]
+            [0.7, 0.15, 0.2, 0.6]
         )
         cb_ax.axis("off")
         plt.colorbar(
