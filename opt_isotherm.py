@@ -32,7 +32,7 @@ def _():
     import pickle
     from scipy.stats import gaussian_kde
 
-    theme = load_theme("arctic_light")
+    theme = load_theme("scientific")
     theme.set_transforms(trim=True)
     theme.apply()
     plt.rcParams.update(
@@ -89,10 +89,10 @@ def _(my_colors, theme_colors):
         "water ads": my_colors[0],
         "Riley": theme_colors[0],
         "Stovepipe": theme_colors[1],
-        "Socorro": theme_colors[5],
-        "Utqiagvik": theme_colors[3],
-        "fitness": theme_colors[4],
-        "step": theme_colors[5]
+        "Socorro": theme_colors[2],
+        "Utqiagvik": theme_colors[4],
+        "fitness": theme_colors[3],
+        "step": theme_colors[-1]
     }
     idea_to_color["ads"] = idea_to_color["night"]
     idea_to_color["des"] = idea_to_color["day"]
@@ -526,7 +526,7 @@ def _(T_range, idea_to_color, np, os, pd, plt):
 
 @app.cell
 def _(WeatherData):
-    wdata = WeatherData("Stovepipe", [5], 2021)
+    wdata = WeatherData("Stovepipe", [6], 2021)
     wdata.ads_des_conditions["date"]
     return (wdata,)
 
@@ -682,7 +682,7 @@ def _(
     sns,
     weather,
 ):
-    with sns.plotting_context("notebook", font_scale=1.4):
+    with sns.plotting_context("notebook", font_scale=1.25):
         short_to_proper_weather_cols = {
             'ads T [°C]': 'capture $T$ [°C]',
             'des T [°C]': 'release $T$ [°C]',
@@ -730,6 +730,24 @@ def _(
                 pp.axes[3, c].set_xticks(T_ticks)
 
         set_weather_cols_axis(pp)
+
+        # Move the legend into the unused upper-right panel
+        gs = pp.axes[-1, 0].get_gridspec()
+        legend_ax = pp.fig.add_subplot(gs[2, 3])
+        legend_ax.axis("off")
+
+        handles = pp._legend_data.values()
+        labels = pp._legend_data.keys()
+        if pp.legend is not None:
+            pp.legend.remove()
+
+        legend_ax.legend(
+            handles, labels, title="location", loc="center", frameon=False
+        )
+
+        pp.fig.subplots_adjust(wspace=0.1, hspace=0.1)
+        for c in range(4):
+            pp.axes[-1, c].xaxis.labelpad = 5
 
         # plt.savefig(
         #     weather.tag + "ads_des_conditions.pdf", 
