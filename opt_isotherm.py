@@ -39,10 +39,10 @@ def _():
         {
             'font.size': 14,
             'axes.titleweight': 'normal',
-            'figure.titleweight': 'normal'
+            'figure.titleweight': 'normal',
+            'figure.figsize': [6.4*0.85, 4.8*0.85]
         }
     )
-
     # date format
     my_date_format_str = '%b-%d'
     my_date_format = mdates.DateFormatter(my_date_format_str)
@@ -941,7 +941,7 @@ def _(BernPolyBasis, colors, inset_axes, mpl, np, plt):
             fig, ax = plt.subplots()
 
             plt.xlabel("relative humidity $p / [p_0(T)]$")
-            plt.ylabel("water adsorption [kg H$_2$O/kg sorbent]")
+            plt.ylabel("water adsorption\n[kg H$_2$O/kg sorbent]")
 
             colormap = mpl.colormaps['coolwarm'] # or 'plasma', 'coolwarm', etc.
             norm = colors.Normalize(vmin=0.0, vmax=70.0)
@@ -956,11 +956,14 @@ def _(BernPolyBasis, colors, inset_axes, mpl, np, plt):
 
             sm = plt.cm.ScalarMappable(cmap=colormap, norm=norm)
             cax = inset_axes(
-                ax, width="4%", height="40%", loc="lower right",
-                bbox_to_anchor=(0.0, 0.05, 0.9, 0.95),  # (x0, y0, width, height) in axes fraction
+                ax, width="4%", height="60%", loc="lower right",
+                bbox_to_anchor=(-0.05, 0.2, 0.9, 0.95),  # (x0, y0, width, height) in axes fraction
                 bbox_transform=ax.transAxes, borderpad=0
             )
-            fig.colorbar(sm, cax=cax, label='temperature [°C]')
+            cbar = fig.colorbar(sm, cax=cax)
+            cbar.set_label('temperature [°C]', labelpad=8)
+            cbar.set_ticks(20*np.arange(4))
+        
             ax.set_xlim(0, 1.0)
             ax.set_ylim(0, self.w_max)
 
@@ -971,12 +974,14 @@ def _(BernPolyBasis, colors, inset_axes, mpl, np, plt):
     return (WaterAdsorptionIsotherm,)
 
 
-@app.cell
-def _(WaterAdsorptionIsotherm):
-    wai = WaterAdsorptionIsotherm(10)
+app._unparsable_cell(
+    r"""
+    "wai = WaterAdsorptionIsotherm(10)
     wai.endow_stepped_isotherm(3)
     wai.draw()
-    return (wai,)
+    """,
+    name="_"
+)
 
 
 @app.cell(hide_code=True)
@@ -1068,7 +1073,7 @@ def _(matplotlib, np):
             facecolor=face_rgba, edgecolor=edge_rgba, linewidth=1.5, label=label
         )
 
-        ax.set_xlabel("total water delivered\n[kg H$_2$O/kg sorbent]")
+        ax.set_xlabel("monthly water delivered\n[kg H$_2$O/kg sorbent]")
         ax.set_ylabel("# months")   
         ax.set_xlim([0.0, max_score])
         ax.set_ylim(ymin=0.0)
@@ -1126,13 +1131,13 @@ def _(
         # rename for seaborn
         monthly_totals = monthly_totals.rename(
             columns = {
-                "water del [kg H$_2$O/kg MOF]": "total water delivered\n[kg H$_2$O/kg MOF]"
+                "water del [kg H$_2$O/kg MOF]": "monthly water delivery\n[kg H$_2$O/kg MOF]"
             }
         )
 
         sns.swarmplot(
             data=monthly_totals, 
-            y="total water delivered\n[kg H$_2$O/kg MOF]", 
+            y="monthly water delivery\n[kg H$_2$O/kg MOF]", 
             x="month", 
             palette=idea_to_color,
             hue="location",
