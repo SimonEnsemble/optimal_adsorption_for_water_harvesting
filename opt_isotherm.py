@@ -1,6 +1,6 @@
 import marimo
 
-__generated_with = "0.17.6"
+__generated_with = "0.23.14"
 app = marimo.App(width="medium")
 
 
@@ -282,6 +282,7 @@ def _(ccrs, cfeature, city_to_coords, idea_to_color, plt):
         plt.tight_layout()
         plt.savefig(savename + ".pdf", format="pdf")
         plt.show()
+
     return (viz_cities,)
 
 
@@ -466,6 +467,11 @@ def _(T_range, idea_to_color, np, os, pd, plt):
             # for a reasonable average... missing data otherwise.
             assert self.ads_des_conditions["date"].nunique() > 25
 
+            # for quickly computing rolling sums
+            self.ads_des_conditions["month_period"] = self.ads_des_conditions["date"].dt.to_period("M")
+            self.ads_des_conditions["day"] = self.ads_des_conditions["date"].dt.day
+            self.ads_des_conditions["date"] = self.ads_des_conditions["date"].dt.date
+
         def viz_timeseries(
             self, save=False, incl_legend=True, 
             legend_dx=0.0, legend_dy=0.0
@@ -498,7 +504,7 @@ def _(T_range, idea_to_color, np, os, pd, plt):
                 self.raw_data["datetime"], self.raw_data["SUR_TEMP"], 
                 label="near-surface air", color="gray", linewidth=2, linestyle="--"
             )
-               
+
 
             ###
             #   relative humidity
@@ -549,7 +555,24 @@ def _(T_range, idea_to_color, np, os, pd, plt):
             return self.ads_des_conditions[
                 ["ads T [°C]", "des T [°C]"]
             ].min().min() < 0.0
+
+        def all_consecutive_days(self):
+            gaps = self.ads_des_conditions["date"].diff().dropna()
+            return (gaps == pd.Timedelta(days=1)).all()
+
     return (WeatherData,)
+
+
+@app.cell
+def _(wdata):
+    wdata.ads_des_conditions["date"]
+    return
+
+
+@app.cell
+def _(wdata):
+    wdata.all_consecutive_days()
+    return
 
 
 @app.cell
@@ -560,14 +583,9 @@ def _(WeatherData):
 
 
 @app.cell
-def _(pd, wdata):
-    wdata.ads_des_conditions["date"] + pd.Timedelta(hours=wdata.time_to_hour["ads"])
-    return
+def _():
 
-
-@app.cell
-def _(wdata):
-    wdata.ads_des_conditions["date"].head()
+    # gaps = dates.diff().dropna()
     return
 
 
@@ -613,6 +631,7 @@ def _(T_range, pd):
             if T_min < T_range[0] or T_max > T_range[1]:
                 print([T_min, T_max])
                 raise Exception("extend T_range")
+
     return (Weather,)
 
 
@@ -627,11 +646,12 @@ def _(mo):
 @app.cell(hide_code=True)
 def _(mo):
     mixed_locations = ["Stovepipe", "Socorro", "Riley", "Yuma", "Utqiagvik"]
-    # mixed_locations = ["Stovepipe", "Riley"]
+    mixed_locations = ["Socorro", "Stovepipe", "Yuma"]
+    mixed_locations = ["Socorro", "Stovepipe", "Riley", "Utqiagvik"]
 
     dropdown = mo.ui.dropdown(
         options=["Yuma", "Riley", "Stovepipe", "Mercury", "Socorro", "Utqiagvik", "mix"], 
-        value="Stovepipe", label="choose location"
+        value="mix", label="choose location"
     )
     # Stovepipe: opt at 0.072
     # Socorro: opt at 0.15
@@ -657,40 +677,52 @@ def _(mo):
 @app.cell
 def _():
     too_many_missing = [
+        ["Stovepipe", 3, 2021],
+        ["Stovepipe", 4, 2021],
         ["Stovepipe", 5, 2021],
         ["Utqiagvik", 5, 2021],
-        ["Socorro", 6, 2022]
+        ["Socorro", 6, 2022],
+        ["Socorro", 2, 2023]
     ]
     return (too_many_missing,)
 
 
 @app.cell
 def _(WeatherData, np, too_many_missing):
-    # Socorro: opt step at 0.154
     def get_weather_datas(locations, months, years, randomize_location=True):
         weather_datas = []
+        n_avoid = 0
+        n_tot = 0
         for yr in years:
             for mo in months:
                 locs_to_use = [np.random.choice(locations)] if randomize_location else locations
                 for location in locs_to_use:
+                    n_tot += 1
                     if [location, mo, yr] in too_many_missing:
+                        n_avoid += 1
                         print("SKIPPING: too much missing.")
                         continue
                     wdata = WeatherData(location, [mo], yr)
-                    weather_datas.append(wdata)
+                    if wdata.all_consecutive_days():
+                        weather_datas.append(wdata)
+                    else:
+                        n_avoid += 1
+        print(f"left out: {n_avoid}/{n_tot}")
         return weather_datas
+
     return (get_weather_datas,)
 
 
 @app.cell
 def _(Weather, dropdown, get_weather_datas, mixed_locations):
     summer_months = [6, 7, 8] # meterological
+    all_months = list(range(1, 13))
     summer_months = [5, 6, 7, 8, 9]
     yrs = [2019, 2020, 2021, 2022, 2023, 2024, 2025]
 
     weather_datas = []
     if not dropdown.value == "mix":
-        weather_datas = get_weather_datas([dropdown.value], summer_months, yrs)
+        weather_datas = get_weather_datas([dropdown.value], all_months, yrs)
     elif dropdown.value == "mix":
         weather_datas = get_weather_datas(mixed_locations, summer_months, yrs, randomize_location=False)
 
@@ -860,6 +892,7 @@ def _(comb, np):
             basis = self.basis_matrix(x)       # (m, n+1)
             val = basis @ np.asarray(bs)       # (m,)
             return val[0] if scalar_input else val
+
     return (BernPolyBasis,)
 
 
@@ -993,10 +1026,13 @@ def _(BernPolyBasis, colors, inset_axes, mpl, np, plt):
                 print(f"ads at T={self.Tref}deg C half max at p/p0 = ", p_star)
             return p_star
 
-        def draw(self):
+        def draw(self, boundary_color=None):
             p_over_p0s = np.linspace(0, 1.0, 100)
 
             fig, ax = plt.subplots()
+            if boundary_color:
+                fig.patch.set_edgecolor(boundary_color)
+                fig.patch.set_linewidth(4)
 
             plt.xlabel("relative humidity, $p / [p_0(T)]$")
             plt.ylabel("water adsorption\n[kg H$_2$O/kg sorbent]")
@@ -1028,6 +1064,7 @@ def _(BernPolyBasis, colors, inset_axes, mpl, np, plt):
             plt.tight_layout()
 
             plt.show()
+
     return (WaterAdsorptionIsotherm,)
 
 
@@ -1035,7 +1072,7 @@ def _(BernPolyBasis, colors, inset_axes, mpl, np, plt):
 def _(WaterAdsorptionIsotherm):
     wai = WaterAdsorptionIsotherm(10)
     wai.endow_stepped_isotherm(3)
-    wai.draw()
+    wai.draw(boundary_color="green")
     return (wai,)
 
 
@@ -1055,22 +1092,51 @@ def attach_water_delivery(wai, weather):
     )
 
 
-@app.function
-def get_monthly_totals(wai, weather):
-    attach_water_delivery(wai, weather)
-
-    monthly_totals = (
-        weather.ads_des_conditions
-        .groupby(["location", weather.ads_des_conditions["date"].dt.to_period("M")])["water del [kg H$_2$O/kg MOF]"]
-        .sum()
-    )
-
-    return monthly_totals
+@app.cell
+def _():
+    n_day_period = 10
+    return (n_day_period,)
 
 
 @app.cell
-def _(wai, weather):
-    get_monthly_totals(wai, weather)
+def _(n_day_period, np, pd):
+    def get_nday_totals(wai, weather, n_day_period=n_day_period, n_samples=5, seed=1337):
+        attach_water_delivery(wai, weather)
+        rng = np.random.default_rng(seed)
+        col = "water del [kg H$_2$O/kg MOF]"
+
+        df = weather.ads_des_conditions
+        df["day"] = df["day"].astype(int)   # ensure proper int dtype once, up front
+
+        results = []
+        for (loc, month), group in df.groupby(["location", "month_period"], sort=False):
+            n_days = month.days_in_month
+            max_start = n_days - n_day_period + 1
+
+            day_vals = np.zeros(n_days + 1)
+            np.add.at(day_vals, group["day"].values, group[col].values)
+            cum = np.cumsum(day_vals)
+
+            starts = rng.integers(1, max_start + 1, size=n_samples)
+            ends = starts + n_day_period - 1
+            window_totals = cum[ends] - cum[starts - 1]
+
+            for i in range(n_samples):
+                results.append((loc, f"{month}-{i}", starts[i], ends[i], window_totals[i]))
+
+        totals = pd.DataFrame(
+            results, columns=["location", "period_label", "start_day", "end_day", "cum water del [kg/kg]"]
+        ).set_index(["location", "period_label"])["cum water del [kg/kg]"]
+
+        return totals
+
+    return (get_nday_totals,)
+
+
+@app.cell
+def _(get_nday_totals, wai, weather):
+    totals = get_nday_totals(wai, weather, 10, seed=3)
+    totals
     return
 
 
@@ -1080,79 +1146,97 @@ def _(np):
         val_at_risk = np.percentile(scores, alpha)
         cval_at_risk = np.mean(scores[scores <= val_at_risk])
         return val_at_risk, cval_at_risk
+
     return (var_cvar,)
 
 
 @app.cell
-def _():
-    alpha = 15.0
-    return (alpha,)
+def _(alpha, get_nday_totals, n_day_period, var_cvar):
+    def score_fitness(wai, weather, alpha=alpha, verbose=False):
+        period_totals = get_nday_totals(wai, weather, n_day_period)
 
+        per_location_var = {}
+        per_location_cvar = {}
+        for loc, group in period_totals.groupby("location"):
+            val_at_risk, cval_at_risk = var_cvar(group.values, alpha)
+            if verbose:
+                print(loc)
+                print("\tvar: ", val_at_risk)
+                print("\tcvar: ", cval_at_risk)
+            per_location_var[loc] = val_at_risk
+            per_location_cvar[loc] = cval_at_risk
 
-@app.cell
-def _(alpha, var_cvar):
-    def score_fitness(wai, weather, alpha=alpha):
-        monthly_totals = get_monthly_totals(wai, weather)
+        min_cvar = min(per_location_cvar.values())
+        if verbose:
+            print("min CVaR: ", min_cvar)
 
-        scores = monthly_totals.values
+        return period_totals, per_location_var, per_location_cvar, min_cvar
 
-        val_at_risk, cval_at_risk = var_cvar(scores, alpha)
-
-        return scores, cval_at_risk
     return (score_fitness,)
 
 
 @app.cell
+def _():
+    alpha = 20.0
+    return (alpha,)
+
+
+@app.cell
 def _(score_fitness, wai, weather):
-    scores, fitness = score_fitness(wai, weather)
+    period_totals, per_location_var, per_location_cvar, min_cvar = score_fitness(wai, weather, verbose=True)
+    period_totals
     return
 
 
 @app.cell
-def _(matplotlib, np):
+def _(matplotlib, n_day_period, np):
     def draw_fitness_ax(
         ax, scores, fitness, color, label, 
         alpha=10, orientation="vertical"
     ):
-        max_score = 0.5 * 32
+        max_score = 0.5 * n_day_period
         bins = np.linspace(0, max_score, 17)
         assert np.max(scores) < max_score
 
         face_rgba = matplotlib.colors.to_rgba(color, alpha=0.5)
         edge_rgba = matplotlib.colors.to_rgba(color, alpha=1.0)
-
+    
         ax.hist(
             scores, bins=bins, histtype="stepfilled",
             facecolor=face_rgba, edgecolor=edge_rgba, linewidth=1.5, label=label
         )
 
-        ax.set_xlabel("monthly water delivered\n[kg H$_2$O/kg sorbent]")
-        ax.set_ylabel("# months")   
+        ax.set_xlabel("cumulative water delivered\n[kg H$_2$O/kg sorbent]")
+        ax.set_ylabel(f"# {n_day_period}-day periods")   
         ax.set_xlim([0.0, max_score])
         ax.set_ylim(ymin=0.0)
 
         ax.axvline(fitness, linestyle="--", color=color)
+
     return (draw_fitness_ax,)
 
 
 @app.cell
 def _(draw_fitness_ax, idea_to_color, plt, score_fitness):
     def draw_fitness_scores(wai, weather):
-        scores, fitness = score_fitness(wai, weather)
-        print("fitness [kg/kg]: ", fitness)
+        period_totals, per_location_var, per_location_cvar, min_cvar = score_fitness(wai, weather)
+        print("fitness [kg/kg]: ", min_cvar)
 
-        plt.figure()
-        draw_fitness_ax(
-            plt.gca(),
-            scores, 
-            fitness, 
-            idea_to_color["fitness"],
-            ""
-        )
+        fig, ax = plt.subplots()
+        for loc, group in period_totals.groupby("location"):
+            draw_fitness_ax(
+                ax,
+                group.values, 
+                per_location_cvar[loc], 
+                idea_to_color[loc],
+                loc
+            )
+        plt.legend()
         plt.tight_layout()
 
         # plt.savefig(weather.tag + "eg_var.pdf", format="pdf")
         plt.show()
+
     return (draw_fitness_scores,)
 
 
@@ -1173,69 +1257,72 @@ def _(
     alpha,
     calendar,
     dropdown,
+    figsize,
     idea_to_color,
+    n_day_period,
     plt,
+    score_fitness,
     sns,
-    var_cvar,
     wai,
     weather,
 ):
     def viz_monthly_water_del(wai, weather, legend_outside=dropdown.value=="mix", savename=None):
-        monthly_totals = get_monthly_totals(wai, weather).reset_index()
-        monthly_totals["month"] = monthly_totals["date"].dt.month
-        fitness = var_cvar(monthly_totals["water del [kg H$_2$O/kg MOF]"].values, alpha)[1]
+        period_totals, per_location_var, per_location_cvar, min_cvar = score_fitness(wai, weather, verbose=True)
 
         # rename for seaborn
-        monthly_totals = monthly_totals.rename(
+        period_totals = period_totals.reset_index().rename(
             columns = {
-                "water del [kg H$_2$O/kg MOF]": "monthly water delivery\n[kg H$_2$O/kg sorbent]"
+                "cum water del [kg/kg]": "cumulative water delivery\n[kg H$_2$O/kg sorbent]"
             }
         )
+        period_totals["month"] = period_totals["period_label"].str.split("-").str[1].astype(int)
 
+        plt.figure(figsize=figsize)
         ax = sns.swarmplot(
-            data=monthly_totals, 
-            y="monthly water delivery\n[kg H$_2$O/kg sorbent]", 
+            data=period_totals, 
+            y="cumulative water delivery\n[kg H$_2$O/kg sorbent]", 
             x="month", 
             palette=idea_to_color,
             hue="location",
-            size=10
+            # size=10
         )
-        plt.title(f"{alpha:.0f}%-CVaR: {fitness:.1f} kg H$_2$O/kg sorbent")
+        plt.title(f"{alpha:.0f}%-CVaR: {min_cvar:.1f} kg H$_2$O/kg sorbent")
 
-        mos = monthly_totals["month"].unique()
+        mos = period_totals["month"].unique()
         plt.xticks(range(len(mos)), [calendar.month_abbr[mo] for mo in mos], fontsize=14)
 
-        cvar_line = plt.axhline(fitness, color=idea_to_color["fitness"], linestyle="--", zorder=0, label="CVaR")
-        plt.ylim([0, 16])
+        cvar_line = plt.axhline(min_cvar, color=idea_to_color["fitness"], linestyle="--", zorder=0, label="CVaR")
+        # var_line = plt.axhline(var, color="gray", linestyle="--", zorder=0, label="VaR")
+        plt.ylim([0, 0.5*n_day_period])
 
-        if legend_outside:
-            # Grab the location legend's handles/labels before they get overwritten
-            location_handles, location_labels = ax.get_legend_handles_labels()
-            # The last handle/label is the axhline ("CVaR"); split it off
-            location_handles, location_labels = location_handles[:-1], location_labels[:-1]
+        # Grab the location legend's handles/labels before they get overwritten
+        location_handles, location_labels = ax.get_legend_handles_labels()
+        # The last handle/label is the axhline ("CVaR"); split it off
+        location_handles, location_labels = location_handles[:-1], location_labels[:-1]
 
-            location_legend = ax.legend(
-                location_handles, location_labels,
-                title="location",
-                bbox_to_anchor=(1.02, 1),
-                loc="upper left",
-                borderaxespad=0
-            )
-            ax.add_artist(location_legend)  # keep this legend from being overwritten
+        location_legend = ax.legend(
+            location_handles, location_labels,
+            title="location",
+            bbox_to_anchor=(1.02, 1) if legend_outside else None,
+            loc="upper left",
+            borderaxespad=0
+        )
+        ax.add_artist(location_legend)  # keep this legend from being overwritten
 
-            ax.legend(
-                [cvar_line], ["CVaR"],
-                bbox_to_anchor=(1.02, 0.4),
-                loc="upper left",
-                borderaxespad=0
-            )
+        ax.legend(
+            [cvar_line], ["CVaR"],
+            bbox_to_anchor=(1.02, 0.6) if legend_outside else None,
+            loc="upper left",
+            title="fitness metric",
+            borderaxespad=0
+        )
 
         if savename:
             plt.savefig(savename + ".pdf", format="pdf", bbox_inches='tight')
 
         plt.show()
 
-    viz_monthly_water_del(wai, weather)
+    viz_monthly_water_del(wai, weather, legend_outside=True)
     return (viz_monthly_water_del,)
 
 
@@ -1283,11 +1370,12 @@ def _(draw_fitness_ax, my_colors, np, p_ovr_p0_ticks, plt, score_fitness):
         #   fitness scores
         ###
         for w, wai in enumerate(wais):
-            scores, fitness = score_fitness(wai, weather)
+            period_totals, per_location_var, per_location_cvar, fitness = score_fitness(wai, weather)
             print(f"fitness WAI {wai.label}: {fitness}")
-            draw_fitness_ax(ax_top, scores, fitness, the_colors[w], label=w)
+            draw_fitness_ax(ax_top, period_totals.values, fitness, the_colors[w], label=w)
 
         plt.show()
+
     return (compare_wais,)
 
 
@@ -1297,7 +1385,7 @@ def _(WaterAdsorptionIsotherm, compare_wais, np, score_fitness, weather):
     for _wai in _wais:
         _wai.endow_random_isotherm()
 
-    _fitness = [score_fitness(wai, weather)[1] for wai in _wais]
+    _fitness = [score_fitness(wai, weather)[-1] for wai in _wais]
     _ids = np.argsort(_fitness)
 
     _wais = [
@@ -1359,6 +1447,7 @@ def _(my_colors, np, p_ovr_p0_ticks, plt):
                 savename + ".pdf", format="pdf",  bbox_inches="tight"
             )
         plt.show()
+
     return (viz_wais,)
 
 
@@ -1384,6 +1473,7 @@ def _(WaterAdsorptionIsotherm, np):
         else:
             wai.endow_random_isotherm()
         return wai
+
     return (random_birth,)
 
 
@@ -1419,6 +1509,7 @@ def _(np):
         wai.bs[wai.bs < 0.0] = 0.0
         wai.bs[wai.bs > wai.w_max] = wai.w_max
         wai.bs[-1] = wai.w_max
+
     return (mutate,)
 
 
@@ -1452,6 +1543,7 @@ def _(np):
         id_a = ids_tourney[ids_winners[0]]
         id_b = ids_tourney[ids_winners[1]]
         return id_a, id_b
+
     return (run_tournament,)
 
 
@@ -1477,6 +1569,7 @@ def _(WaterAdsorptionIsotherm, np):
         return WaterAdsorptionIsotherm(
             wai_a.n, bs=alpha * wai_a.bs + (1 - alpha) * wai_b.bs
         )
+
     return (random_combination,)
 
 
@@ -1520,6 +1613,7 @@ def _(np):
         wai.bs = np.sort(wai.bs)
 
         return wai
+
     return (random_cross_over,)
 
 
@@ -1556,7 +1650,7 @@ def _(score_fitness):
     def ls_stepify(wai, weather, verbose=False): 
         new_wai = wai.copy()
 
-        scores, fitness = score_fitness(wai, weather)
+        fitness = score_fitness(wai, weather)[-1]
         if verbose:
             print("---local search---")
             print("current fitness: ", fitness)
@@ -1564,7 +1658,7 @@ def _(score_fitness):
         # max out capacity at high p/p0 until fitness decreases
         for i in range(1, wai.n): # walk backwards thru array
             new_wai.bs[-i:] = wai.w_max
-            new_scores, new_fitness = score_fitness(new_wai, weather)
+            new_fitness = score_fitness(new_wai, weather)[-1]
             if verbose:
                 print("new fitness: ", new_fitness)
 
@@ -1582,7 +1676,7 @@ def _(score_fitness):
         # destroy capacity at low p/p0 until fitness decreases
         for i in range(1, wai.n): # walk forwards thru array
             new_wai.bs[:i] = 0.0
-            new_scores, new_fitness = score_fitness(new_wai, weather)
+            new_fitness = score_fitness(new_wai, weather)[-1]
             if verbose:
                 print("new fitness: ", new_fitness)
 
@@ -1596,6 +1690,7 @@ def _(score_fitness):
                 fitness = new_fitness
             else:
                 break 
+
     return (ls_stepify,)
 
 
@@ -1647,7 +1742,7 @@ def _(
         dim = wais[0].n
 
         # compute fitnesses of each individual
-        fitnesses = np.array([score_fitness(wai, weather)[1] for wai in wais])
+        fitnesses = np.array([score_fitness(wai, weather)[-1] for wai in wais])
 
         # which are the elite individuals?
         ids_elite = np.argpartition(fitnesses, -n_elite)[-n_elite:]
@@ -1691,6 +1786,7 @@ def _(
             mutate(new_wais[id], eps)
 
         return new_wais
+
     return (evolve,)
 
 
@@ -1698,6 +1794,7 @@ def _(
 def _(random_birth):
     def gen_initial_pop(pop_size, n):
         return [random_birth(n) for _ in range(pop_size)]
+
     return (gen_initial_pop,)
 
 
@@ -1706,12 +1803,12 @@ def _(evolve, gen_initial_pop, np, plt, score_fitness, weather):
     # first generation
     wais = gen_initial_pop(75, 25)
 
-    fitnesses = np.array([score_fitness(wai, weather)[1] for wai in wais])
+    fitnesses = np.array([score_fitness(wai, weather)[-1] for wai in wais])
 
     # second generation
     new_wais = evolve(wais, weather, n_elite=5)
     new_fitnesses = np.array(
-        [score_fitness(new_wai, weather)[1] for new_wai in new_wais]
+        [score_fitness(new_wai, weather)[-1] for new_wai in new_wais]
     )
 
     plt.figure()
@@ -1746,7 +1843,7 @@ def _(evolve, gen_initial_pop, np, score_fitness):
         wais = gen_initial_pop(pop_size, dim)
 
         # score fitnesses
-        fitnesses = np.array([score_fitness(wai, weather)[1] for wai in wais])
+        fitnesses = np.array([score_fitness(wai, weather)[-1] for wai in wais])
 
         # store progress
         fitnesses_gen = [fitnesses]
@@ -1754,17 +1851,19 @@ def _(evolve, gen_initial_pop, np, score_fitness):
 
         # evolve over generations
         for g in range(1, n_generations):
+            print("Gen: ", g)
             wais = evolve(wais, weather)
-            fitnesses = np.array([score_fitness(wai, weather)[1] for wai in wais])
+            fitnesses = np.array([score_fitness(wai, weather)[-1] for wai in wais])
 
             fitnesses_gen.append(fitnesses)
             best_wai_gen.append(wais[np.argmax(fitnesses)])
 
         best_wai = wais[np.argmax(fitnesses)]
         best_wai.label = "optimal"
-        best_scores, best_fitness = score_fitness(best_wai, weather)
+        best_period_totals, _, _, best_fitness = score_fitness(best_wai, weather, verbose=True)
 
-        return fitnesses_gen, best_wai_gen, best_wai, best_scores, best_fitness
+        return fitnesses_gen, best_wai_gen, best_wai, best_period_totals, best_fitness
+
     return (do_evolution,)
 
 
@@ -1774,15 +1873,15 @@ def _(do_evolution, run_evol_cbox, weather):
     n_generations = 25
     n = 50
     if run_evol_cbox.value:
-        fitnesses_gen, best_wai_gen, best_wai, best_scores, best_fitness = do_evolution(
+        fitnesses_gen, best_wai_gen, best_wai, best_period_totals, best_fitness = do_evolution(
             weather, n_generations, pop_size, n
         )
     return best_fitness, best_wai, best_wai_gen, fitnesses_gen, n
 
 
 @app.cell
-def _(best_wai):
-    best_wai.draw()
+def _(best_wai, dropdown, idea_to_color):
+    best_wai.draw(boundary_color=None if dropdown.value == "mix" else idea_to_color[dropdown.value])
     return
 
 
@@ -1795,19 +1894,6 @@ def _(best_wai):
 @app.cell
 def _(best_wai, draw_fitness_scores, weather):
     draw_fitness_scores(best_wai, weather)
-    return
-
-
-@app.cell
-def _(best_wai, weather):
-    monthly_water_del = get_monthly_totals(best_wai, weather)
-    monthly_water_del
-    return (monthly_water_del,)
-
-
-@app.cell
-def _(monthly_water_del):
-    monthly_water_del.reset_index().sort_values("water del [kg H$_2$O/kg MOF]")
     return
 
 
@@ -2004,7 +2090,7 @@ def _(T_range, colors, mpl, np, p_ovr_p0_ticks, plt):
     def viz_water_del(wai, weather, date, savename=""):
         day_data = weather.ads_des_conditions[
             weather.ads_des_conditions["date"].apply(
-                lambda d: d.date() == date
+                lambda d: d == date
             )
         ].iloc[0, :]
 
@@ -2071,7 +2157,14 @@ def _(T_range, colors, mpl, np, p_ovr_p0_ticks, plt):
                 weather.tag + savename + ".pdf", format="pdf", bbox_inches="tight"
             )
         plt.show()
+
     return (viz_water_del,)
+
+
+@app.cell
+def _(weather):
+    weather.ads_des_conditions["date"]
+    return
 
 
 @app.cell
@@ -2099,7 +2192,7 @@ def _(best_wai, weather):
 
 @app.cell
 def _(best_wai, failure_explorer, failure_list, viz_water_del, weather):
-    viz_water_del(best_wai, weather, failure_list.iloc[failure_explorer.value]["date"].date())
+    viz_water_del(best_wai, weather, failure_list.iloc[failure_explorer.value]["date"])
     return
 
 
@@ -2121,7 +2214,7 @@ def _(WaterAdsorptionIsotherm, n, np, score_fitness, weather):
             wais[i_step-1].endow_stepped_isotherm(i_step)
 
         fitnesses = np.array(
-            [score_fitness(wai, weather)[1] for wai in wais]
+            [score_fitness(wai, weather)[-1] for wai in wais]
         )
         id_opt = np.argmax(fitnesses)
         opt_fitness = np.max(fitnesses)
@@ -2355,7 +2448,7 @@ def _(dropdown, np, pd, plt):
 
             plt.xlabel("relative humidity, $p / [p_0(T)]$")
             plt.ylabel("water adsorption\n[kg H$_2$O/kg MOF]")
-        
+
             plt.scatter(
                 self.data["RH[%]"] / 100.0, self.data["Water Uptake [kg kg-1]"],
                 label=f"{self.name}"
@@ -2367,8 +2460,9 @@ def _(dropdown, np, pd, plt):
                 plt.plot(p_ovr_p0s, ws, label=f"{wai.label} for {dropdown.value}")
 
             plt.legend()
-            
+
             plt.show()
+
     return (ExptIsotherm,)
 
 
