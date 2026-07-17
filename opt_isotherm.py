@@ -722,7 +722,7 @@ def _(Weather, dropdown, get_weather_datas, mixed_locations):
 
     weather_datas = []
     if not dropdown.value == "mix":
-        weather_datas = get_weather_datas([dropdown.value], all_months, yrs)
+        weather_datas = get_weather_datas([dropdown.value], summer_months, yrs)
     elif dropdown.value == "mix":
         weather_datas = get_weather_datas(mixed_locations, summer_months, yrs, randomize_location=False)
 
@@ -930,10 +930,16 @@ def _(mo):
 
 
 @app.cell
-def _(BernPolyBasis, colors, inset_axes, mpl, np, plt):
+def _():
+    w_max = 0.4
+    return (w_max,)
+
+
+@app.cell
+def _(BernPolyBasis, colors, inset_axes, mpl, np, plt, w_max):
     class WaterAdsorptionIsotherm:
         def __init__(
-            self, n, Tref=25.0, w_max=0.5, bs=None
+            self, n, Tref=25.0, w_max=w_max, bs=None
         ):
             # number of control points
             self.n = n
@@ -1189,12 +1195,12 @@ def _(score_fitness, wai, weather):
 
 
 @app.cell
-def _(matplotlib, n_day_period, np):
+def _(matplotlib, n_day_period, np, w_max):
     def draw_fitness_ax(
         ax, scores, fitness, color, label, 
         alpha=10, orientation="vertical"
     ):
-        max_score = 0.5 * n_day_period
+        max_score = w_max * n_day_period
         bins = np.linspace(0, max_score, 17)
         assert np.max(scores) < max_score
 
@@ -1263,6 +1269,7 @@ def _(
     plt,
     score_fitness,
     sns,
+    w_max,
     wai,
     weather,
 ):
@@ -1293,7 +1300,7 @@ def _(
 
         cvar_line = plt.axhline(min_cvar, color=idea_to_color["fitness"], linestyle="--", zorder=0, label="CVaR")
         # var_line = plt.axhline(var, color="gray", linestyle="--", zorder=0, label="VaR")
-        plt.ylim([0, 0.5*n_day_period])
+        plt.ylim([0, w_max*n_day_period])
 
         # Grab the location legend's handles/labels before they get overwritten
         location_handles, location_labels = ax.get_legend_handles_labels()
@@ -1949,7 +1956,17 @@ def _(alpha, figsize, fitnesses_gen, pd, plt, sns):
 
 
 @app.cell
-def _(best_wai_gen, colors, mpl, np, p_ovr_p0_ticks, plt, wais, weather):
+def _(
+    best_wai_gen,
+    colors,
+    mpl,
+    np,
+    p_ovr_p0_ticks,
+    plt,
+    w_max,
+    wais,
+    weather,
+):
     def viz_best_wais(best_wai_gen):
         p_over_p0s = np.linspace(0, 1.0, 150)
         Tref = best_wai_gen[0].Tref
@@ -1983,7 +2000,7 @@ def _(best_wai_gen, colors, mpl, np, p_ovr_p0_ticks, plt, wais, weather):
             sm, ax=cb_ax, label='generation', 
         )
         plt.xlim([0, 1])
-        plt.ylim([0, 0.5])
+        plt.ylim([0, w_max])
 
         plt.tight_layout()
         plt.savefig(
