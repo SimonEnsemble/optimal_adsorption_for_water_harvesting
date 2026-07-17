@@ -35,7 +35,7 @@ def _():
     theme = load_theme("scientific")
     theme.set_transforms(trim=True)
     theme.apply()
-    figsize = [6.4*0.85, 4.8*0.85]
+    figsize = [6.4*0.875, 4.8*0.875]
     plt.rcParams.update(
         {
             'font.size': 14,
@@ -185,6 +185,15 @@ def _(np, plt):
     return
 
 
+@app.cell
+def _():
+    toy_RH_ambient = 0.3
+    toy_T_ambient = 25.0
+    toy_T_land = 40.0
+    toy_RH_ambient * water_p0(toy_T_ambient) / water_p0(toy_T_land), 
+    return
+
+
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -246,15 +255,14 @@ def _():
 def _(ccrs, cfeature, city_to_coords, idea_to_color, plt):
     def viz_cities(cities):
         xy_shift = {
-            "Riley": [6.5, 0],
-            "Stovepipe": [-11., 0.0],
-            "Socorro": [0, 4.5],
-            "Utqiagvik": [0, -4.5],
+            "Riley": [6.1, 0],
+            "Stovepipe": [-9.75, 0.0],
+            "Socorro": [0, 3.75],
+            "Utqiagvik": [0, -3.75],
             "Yuma": [-7.5, 0]
         }
 
         fig, ax = plt.subplots(
-            figsize=(4, 4),
             subplot_kw={"projection": ccrs.PlateCarree()}
         )
 
@@ -276,11 +284,11 @@ def _(ccrs, cfeature, city_to_coords, idea_to_color, plt):
                     transform=ccrs.PlateCarree(), 
                     bbox=dict(facecolor="white", alpha=0.7, edgecolor="none", boxstyle="round,pad=0.2")
             )
-        savename = "figs/map"
+        savename = "map"
         for city in cities:
             savename = savename + "_" + city
-        plt.tight_layout()
-        plt.savefig(savename + ".pdf", format="pdf")
+        # plt.tight_layout()
+        plt.savefig(savename + ".pdf", format="pdf", bbox_inches="tight", pad_inches=0)
         plt.show()
 
     return (viz_cities,)
@@ -1032,7 +1040,7 @@ def _(BernPolyBasis, colors, inset_axes, mpl, np, plt, w_max):
                 print(f"ads at T={self.Tref}deg C half max at p/p0 = ", p_star)
             return p_star
 
-        def draw(self, boundary_color=None):
+        def draw(self, boundary_color=None, savename=None):
             p_over_p0s = np.linspace(0, 1.0, 100)
 
             fig, ax = plt.subplots()
@@ -1068,6 +1076,8 @@ def _(BernPolyBasis, colors, inset_axes, mpl, np, plt, w_max):
             ax.set_ylim(0, self.w_max)
 
             plt.tight_layout()
+            if savename:
+                plt.savefig(savename + ".pdf", format="pdf")
 
             plt.show()
 
@@ -1273,7 +1283,11 @@ def _(
     wai,
     weather,
 ):
-    def viz_monthly_water_del(wai, weather, legend_outside=dropdown.value=="mix", savename=None):
+    def viz_monthly_water_del(
+        wai, weather, 
+        legend_outside=dropdown.value=="mix", savename=None, boundary_color=None,
+        loc_legend_loc="upper left", cvar_legend_loc="upper left", incl_cvar_legend=True
+    ):
         period_totals, per_location_var, per_location_cvar, min_cvar = score_fitness(wai, weather, verbose=True)
 
         # rename for seaborn
@@ -1284,13 +1298,19 @@ def _(
         )
         period_totals["month"] = period_totals["period_label"].str.split("-").str[1].astype(int)
 
-        plt.figure(figsize=figsize)
+        fig, ax = plt.subplots(figsize=figsize)
+    
+        if boundary_color:
+            fig.patch.set_edgecolor(boundary_color)
+            fig.patch.set_linewidth(4)
+        
         ax = sns.swarmplot(
             data=period_totals, 
             y="cumulative water delivery\n[kg H$_2$O/kg sorbent]", 
             x="month", 
             palette=idea_to_color,
             hue="location",
+            clip_on=False
             # size=10
         )
         plt.title(f"{alpha:.0f}%-CVaR: {min_cvar:.1f} kg H$_2$O/kg sorbent")
@@ -1311,18 +1331,19 @@ def _(
             location_handles, location_labels,
             title="location",
             bbox_to_anchor=(1.02, 1) if legend_outside else None,
-            loc="upper left",
+            loc=loc_legend_loc,
             borderaxespad=0
         )
         ax.add_artist(location_legend)  # keep this legend from being overwritten
 
-        ax.legend(
-            [cvar_line], ["CVaR"],
-            bbox_to_anchor=(1.02, 0.6) if legend_outside else None,
-            loc="upper left",
-            title="fitness metric",
-            borderaxespad=0
-        )
+        if incl_cvar_legend:
+            ax.legend(
+                [cvar_line], ["CVaR"],
+                bbox_to_anchor=(1.02, 0.5) if legend_outside else None,
+                loc=cvar_legend_loc,
+                title="fitness metric",
+                borderaxespad=0
+            )
 
         if savename:
             plt.savefig(savename + ".pdf", format="pdf", bbox_inches='tight')
@@ -1887,8 +1908,11 @@ def _(do_evolution, run_evol_cbox, weather):
 
 
 @app.cell
-def _(best_wai, dropdown, idea_to_color):
-    best_wai.draw(boundary_color=None if dropdown.value == "mix" else idea_to_color[dropdown.value])
+def _(best_wai, dropdown, idea_to_color, weather):
+    best_wai.draw(
+        boundary_color=None if dropdown.value == "mix" else idea_to_color[dropdown.value],
+        savename=f"best_wai_{weather.tag}"
+    )
     return
 
 
@@ -1905,8 +1929,13 @@ def _(best_wai, draw_fitness_scores, weather):
 
 
 @app.cell
-def _(best_wai, viz_monthly_water_del, weather):
-    viz_monthly_water_del(best_wai, weather)
+def _(best_wai, dropdown, idea_to_color, viz_monthly_water_del, weather):
+    viz_monthly_water_del(
+        best_wai, weather,
+        boundary_color=None if dropdown.value == "mix" else idea_to_color[dropdown.value],
+        savename=f"best_wai_fitness_{weather.tag}",
+        cvar_legend_loc="lower right", loc_legend_loc="lower left", incl_cvar_legend=weather.tag=="Stovepipe"
+    )
     return
 
 
@@ -2104,7 +2133,7 @@ def _(
 
 @app.cell
 def _(T_range, colors, mpl, np, p_ovr_p0_ticks, plt):
-    def viz_water_del(wai, weather, date, savename=""):
+    def viz_water_del(wai, weather, date, savename="", boundary_color=None):
         day_data = weather.ads_des_conditions[
             weather.ads_des_conditions["date"].apply(
                 lambda d: d == date
@@ -2113,7 +2142,10 @@ def _(T_range, colors, mpl, np, p_ovr_p0_ticks, plt):
 
         p_over_p0s = np.linspace(0, 1.0, 100)
 
-        fig = plt.figure()
+        fig, ax = plt.subplots()
+        if boundary_color:
+            fig.patch.set_edgecolor(boundary_color)
+            fig.patch.set_linewidth(4)
         plt.xlabel("relative humidity $p / [p_0(T)]$")
         plt.xticks(p_ovr_p0_ticks)
         plt.xlim(0, 1.0)
@@ -2366,7 +2398,7 @@ def _(mo):
 @app.cell
 def _(weather):
     if "Riley" in weather.tag:
-        other_tag = "Socorro"
+        other_tag = "Stovepipe"
     elif "Socorro" in weather.tag:
         other_tag = "Riley"
     elif "Stovepipe" in weather.tag:
@@ -2387,8 +2419,19 @@ def _(other_tag, pickle):
 
 
 @app.cell
-def _(best_wai_other_city, viz_monthly_water_del, weather):
-    viz_monthly_water_del(best_wai_other_city, weather)
+def _(
+    best_wai_other_city,
+    idea_to_color,
+    other_tag,
+    viz_monthly_water_del,
+    weather,
+):
+    viz_monthly_water_del(
+        best_wai_other_city, weather,
+        boundary_color=idea_to_color[other_tag],
+        savename=f"best_wai_{other_tag}_fitness_in_{weather.tag}",
+        loc_legend_loc="upper left", incl_cvar_legend=False
+    )
     return
 
 
@@ -2401,6 +2444,12 @@ def _(best_wai_other_city, weather):
 
 
 @app.cell
+def _():
+    print("TODO: get when isotherm in one city goo dbut the other sucks.")
+    return
+
+
+@app.cell
 def _(best_wai_other_city):
     best_wai_other_city.get_p_ovr_p0_half_max()
     return
@@ -2409,7 +2458,7 @@ def _(best_wai_other_city):
 @app.cell(hide_code=True)
 def _(mo):
     non_tailor_failure_explorer = mo.ui.slider(
-        start=0, stop=200, label="failure ID"
+        start=0, stop=400, label="failure ID"
     )
     non_tailor_failure_explorer
     return (non_tailor_failure_explorer,)
@@ -2419,22 +2468,28 @@ def _(mo):
 def _(
     best_wai_other_city,
     failure_list_other_city,
+    idea_to_color,
     non_tailor_failure_explorer,
+    other_tag,
     viz_water_del,
     weather,
 ):
-    # if weather.location == "Riley":
+    if weather.tag == "Riley":
+        failure_id = non_tailor_failure_explorer.value
+        failure_id = 192
     #     failure_id = 11
-    # elif weather.location == "Yuma":
+    elif weather.tag == "Stovepipe":
+        failure_id = non_tailor_failure_explorer.value
     #     failure_id = 47
-    # else:
-    failure_id = non_tailor_failure_explorer.value
-    #     print(failure_id)
+    else:
+        failure_id = non_tailor_failure_explorer.value
+    print(failure_id)
 
     viz_water_del(
         best_wai_other_city, weather, 
-        failure_list_other_city.iloc[failure_id]["date"].date(),
-        savename="other_city_failure"
+        failure_list_other_city.iloc[failure_id]["date"],
+        boundary_color=idea_to_color[other_tag],
+        savename=f"failure_best_wai_{other_tag}_in_{weather.tag}"
     )
     return
 
