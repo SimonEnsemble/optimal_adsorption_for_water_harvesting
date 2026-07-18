@@ -254,7 +254,7 @@ def _():
 
 @app.cell
 def _(ccrs, cfeature, city_to_coords, idea_to_color, plt):
-    def viz_cities(cities):
+    def viz_cities(cities, city_AB=None, savename="map"):
         xy_shift = {
             "Riley": [6.1, 0],
             "Stovepipe": [-9.75, 0.0],
@@ -285,19 +285,35 @@ def _(ccrs, cfeature, city_to_coords, idea_to_color, plt):
                     transform=ccrs.PlateCarree(), 
                     bbox=dict(facecolor="white", alpha=0.7, edgecolor="none", boxstyle="round,pad=0.2")
             )
-        savename = "map"
+        
+        if city_AB:
+            lon1, lat1 = city_to_coords[city_AB[0]]
+            lon2, lat2 = city_to_coords[city_AB[1]]
+            ax.annotate(
+                "",
+                xy=(lon2, lat2), xycoords=ccrs.PlateCarree()._as_mpl_transform(ax),
+                xytext=(lon1, lat1), textcoords=ccrs.PlateCarree()._as_mpl_transform(ax),
+                arrowprops=dict(
+                    arrowstyle="-|>",
+                    color="black",
+                    lw=2,
+                    shrinkA=0, shrinkB=0,  # avoid overlapping the star markers
+                    mutation_scale=20
+                )
+            )
+
         for city in cities:
             savename = savename + "_" + city
         # plt.tight_layout()
         plt.savefig(savename + ".pdf", format="pdf", bbox_inches="tight", pad_inches=0)
         plt.show()
 
-    return
+    return (viz_cities,)
 
 
 @app.cell
-def _():
-    # viz_cities(mixed_locations)
+def _(mixed_locations, viz_cities):
+    viz_cities(mixed_locations)
     return
 
 
@@ -1111,9 +1127,9 @@ def _(mo):
 
 
 @app.function
-def attach_water_delivery(wai, weather):
+def attach_water_delivery(wai, weather, prefix=""):
     # compute water delivery
-    weather.ads_des_conditions["water del [kg H$_2$O/kg MOF]"] = wai.water_del(
+    weather.ads_des_conditions[prefix + "water del [kg H$_2$O/kg MOF]"] = wai.water_del(
         weather.ads_des_conditions
     )
 
@@ -1264,12 +1280,6 @@ def _(draw_fitness_ax, idea_to_color, plt, score_fitness):
         plt.show()
 
     return (draw_fitness_scores,)
-
-
-@app.cell
-def _(alpha):
-    alpha
-    return
 
 
 @app.cell
@@ -2176,7 +2186,7 @@ def _(T_range, colors, mpl, np, p_ovr_p0_ticks, plt):
         if boundary_color:
             fig.patch.set_edgecolor(boundary_color)
             fig.patch.set_linewidth(4)
-        plt.xlabel("relative humidity $p / [p_0(T)]$")
+        plt.xlabel("relative humidity, $p / [p_0(T)]$")
         plt.xticks(p_ovr_p0_ticks)
         plt.xlim(0, 1.0)
         plt.ylabel("water adsorption\n[kg H$_2$O/kg sorbent]")
@@ -2213,21 +2223,25 @@ def _(T_range, colors, mpl, np, p_ovr_p0_ticks, plt):
             )
 
         # put water delivery there
-        plt.arrow(p_ovr_p0_night, w_night, 0, w_day - w_night, 
-              color="black", head_width=0.008, length_includes_head=True)
-        plt.text(
-            p_ovr_p0_night + 0.01, (w_day + w_night) / 2,
-            f" water delivery:\n {w_night-w_day:0.2f} kg/kg",
-            color='black', 
-            fontsize=10, 
-            verticalalignment='center'
+        plt.arrow(
+            p_ovr_p0_night, w_night, 0, w_day - w_night, 
+            color="black", head_width=0.008, length_includes_head=True
         )
+        wdel_label = f" water delivery:\n {w_night-w_day:0.2f} kg/kg"
+    
+        # plt.text(
+        #     p_ovr_p0_night + 0.01, (w_day + w_night) / 2,
+        #     wdel_label,
+        #     color='black', 
+        #     fontsize=10, 
+        #     verticalalignment='center'
+        # )
         plt.plot(
             [p_ovr_p0_night, p_ovr_p0_day], [w_day, w_day], 
             color="gray", linestyle="--"
         )
 
-        plt.legend(fontsize=12, title=date)
+        plt.legend(fontsize=12, title=str(date) + "\n" + wdel_label)
         plt.xlim([0, 1])
         plt.ylim(ymin=0.0)
 
@@ -2508,109 +2522,108 @@ def _(best_wais, compare_best_wais, weathers):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    # how does the opt isotherm from another city translate to here?
+    # how does the opt isotherm from one city transfer to another?
     """)
     return
 
 
 @app.cell
-def _():
+def _(unpickle):
     # bring A -> B
-    city_A = "Stovepipe"
+    loc_A = "Riley"
     season_A = "summer"
 
-    city_B = "Riley"
+    loc_B = "Stovepipe"
     season_B = "summer"
+
+    best_wai_A = unpickle(loc_A + "_summer_opt_isotherm")
+
+    best_wai_B = unpickle(loc_B + "_summer_opt_isotherm")
+    weather_B = unpickle(loc_B + "_summer_weather")
+    return best_wai_A, best_wai_B, loc_A, loc_B, weather_B
+
+
+@app.cell
+def _(loc_A, loc_B, viz_cities):
+    viz_cities([loc_A, loc_B], city_AB=[loc_A, loc_B])
     return
 
 
 @app.cell
-def _(unpickle):
-    city_A_wai = unpickle
+def _(gaussian_kde, my_colors, n_day_period, np, plt, score_fitness, w_max):
+    def viz_mismatch_fitness(wai, weather, loc_A, loc_B):
+        max_score = w_max * n_day_period
+        x_grid = np.linspace(0, max_score, 150)
+
+        fig, ax = plt.subplots()
+
+        color = my_colors[-1] # gray
+    
+        period_totals, per_location_var, per_location_cvar, min_cvar = score_fitness(wai, weather)
+        print("fitness [kg/kg]: ", min_cvar)
+        assert period_totals.max() < max_score
+
+        # KDE
+        kde = gaussian_kde(period_totals.values)
+        density = kde(x_grid)
+
+        label = f"opt sorbent for {loc_A} in {loc_B}"
+        plt.plot(x_grid, density, color=color, lw=3, label=label)
+        plt.fill_between(x_grid, density, alpha=0.05, color=color)
+
+        ax.axvline(min_cvar, linestyle="--", color=color)
+        
+        ax.set_xlabel("cumulative water delivered\n[kg H$_2$O/kg sorbent]")
+        ax.set_ylabel(f"density")   
+    
+        ax.set_xlim([0.0, max_score])
+        ax.set_ylim(ymin=0.0)
+    
+        plt.legend()
+
+        plt.savefig(f"{loc_A}_to_{loc_B}.pdf", format="pdf")
+        plt.show()
+
+    return (viz_mismatch_fitness,)
+
+
+@app.cell
+def _(best_wai_A, loc_A, loc_B, viz_mismatch_fitness, weather_B):
+    viz_mismatch_fitness(best_wai_A, weather_B, loc_A, loc_B)
     return
 
 
 @app.cell
-def _(other_tag, pickle):
-    other_pf_name = "pkls/" + other_tag + '_opt_isotherm.pkl'
-    with open(other_pf_name, 'rb') as opf:
-        best_wai_other_city = pickle.load(opf)
-    best_wai_other_city
-    return (best_wai_other_city,)
+def _(best_wai_A, best_wai_B, weather_B):
+    attach_water_delivery(best_wai_A, weather_B, prefix="A_")
+    attach_water_delivery(best_wai_B, weather_B, prefix="B_")
+    wdel_diff_data = weather_B.ads_des_conditions.copy()
+    # we are in city B. we want to find when sorbent optimized for B does way better than the sorbent optimized for A.
+    wdel_diff_data["water del B - A"] = wdel_diff_data["B_water del [kg H$_2$O/kg MOF]"] - wdel_diff_data["A_water del [kg H$_2$O/kg MOF]"]
+    wdel_diff_data = wdel_diff_data.sort_values(by="water del B - A", ascending=False)
+    wdel_diff_data
+    return (wdel_diff_data,)
 
 
 @app.cell
-def _(
-    best_wai_other_city,
-    idea_to_color,
-    other_tag,
-    viz_monthly_water_del,
-    weather,
-):
-    viz_monthly_water_del(
-        best_wai_other_city, weather,
-        boundary_color=idea_to_color[other_tag],
-        savename=f"best_wai_{other_tag}_fitness_in_{weather.tag}",
-        loc_legend_loc="upper left", incl_cvar_legend=False
-    )
+def _(best_wai_A):
+    best_wai_A.get_p_ovr_p0_half_max()
     return
 
 
 @app.cell
-def _(best_wai_other_city, weather):
-    attach_water_delivery(best_wai_other_city, weather)
-    failure_list_other_city = weather.ads_des_conditions.copy().sort_values("water del [kg H$_2$O/kg MOF]")
-    failure_list_other_city
-    return (failure_list_other_city,)
-
-
-@app.cell
-def _():
-    print("TODO: get when isotherm in one city goo dbut the other sucks.")
+def _(best_wai_B):
+    best_wai_B.get_p_ovr_p0_half_max()
     return
 
 
 @app.cell
-def _(best_wai_other_city):
-    best_wai_other_city.get_p_ovr_p0_half_max()
-    return
-
-
-@app.cell(hide_code=True)
-def _(mo):
-    non_tailor_failure_explorer = mo.ui.slider(
-        start=0, stop=400, label="failure ID"
-    )
-    non_tailor_failure_explorer
-    return (non_tailor_failure_explorer,)
-
-
-@app.cell
-def _(
-    best_wai_other_city,
-    failure_list_other_city,
-    idea_to_color,
-    non_tailor_failure_explorer,
-    other_tag,
-    viz_water_del,
-    weather,
-):
-    if weather.tag == "Riley":
-        failure_id = non_tailor_failure_explorer.value
-        failure_id = 192
-    #     failure_id = 11
-    elif weather.tag == "Stovepipe":
-        failure_id = non_tailor_failure_explorer.value
-    #     failure_id = 47
-    else:
-        failure_id = non_tailor_failure_explorer.value
-    print(failure_id)
-
+def _(best_wai_A, loc_A, loc_B, viz_water_del, wdel_diff_data, weather_B):
     viz_water_del(
-        best_wai_other_city, weather, 
-        failure_list_other_city.iloc[failure_id]["date"],
-        boundary_color=idea_to_color[other_tag],
-        savename=f"failure_best_wai_{other_tag}_in_{weather.tag}"
+        best_wai_A, weather_B, 
+        wdel_diff_data.iloc[10]["date"],
+        # boundary_color=idea_to_color[other_tag],
+        savename=f"failure_{loc_A}_in_{loc_B}"
     )
     return
 
