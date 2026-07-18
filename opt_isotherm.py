@@ -1763,9 +1763,7 @@ def _(
     def evolve(
         wais, weather, n_elite=5, tourney_size=10, 
         n_rand=15, n_mutate=15, eps=0.05, verbose=False, seed=1993
-    ):
-        np.random.seed(seed)
-    
+    ):  
         # what's the population size?
         pop_size = np.shape(wais)[0]
 
