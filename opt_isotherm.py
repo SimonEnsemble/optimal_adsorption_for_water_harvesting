@@ -54,7 +54,6 @@ def _():
         colors,
         comb,
         datetime,
-        figsize,
         gaussian_kde,
         inset_axes,
         matplotlib,
@@ -254,7 +253,7 @@ def _():
 
 @app.cell
 def _(ccrs, cfeature, city_to_coords, idea_to_color, plt):
-    def viz_cities(cities, city_AB=None, savename="map"):
+    def viz_cities(cities, city_AB=None, savename=None):
         xy_shift = {
             "Riley": [6.1, 0],
             "Stovepipe": [-9.75, 0.0],
@@ -302,10 +301,9 @@ def _(ccrs, cfeature, city_to_coords, idea_to_color, plt):
                 )
             )
 
-        for city in cities:
-            savename = savename + "_" + city
         # plt.tight_layout()
-        plt.savefig(savename + ".pdf", format="pdf", bbox_inches="tight", pad_inches=0)
+        if savename:
+            plt.savefig(savename + ".pdf", format="pdf", bbox_inches="tight", pad_inches=0)
         plt.show()
 
     return (viz_cities,)
@@ -313,7 +311,7 @@ def _(ccrs, cfeature, city_to_coords, idea_to_color, plt):
 
 @app.cell
 def _(mixed_locations, viz_cities):
-    viz_cities(mixed_locations)
+    viz_cities(mixed_locations, savename="map_all")
     return
 
 
@@ -1259,24 +1257,53 @@ def _(matplotlib, n_day_period, np, w_max):
 
 
 @app.cell
-def _(draw_fitness_ax, idea_to_color, plt, score_fitness):
+def _(
+    alpha,
+    gaussian_kde,
+    idea_to_color,
+    n_day_period,
+    np,
+    plt,
+    score_fitness,
+    w_max,
+):
     def draw_fitness_scores(wai, weather):
-        period_totals, per_location_var, per_location_cvar, min_cvar = score_fitness(wai, weather)
-        print("fitness [kg/kg]: ", min_cvar)
+        max_score = w_max * n_day_period
+        x_grid = np.linspace(0, max_score, 150)
 
         fig, ax = plt.subplots()
-        for loc, group in period_totals.groupby("location"):
-            draw_fitness_ax(
-                ax,
-                group.values, 
-                per_location_cvar[loc], 
-                idea_to_color[loc],
-                loc
-            )
+    
+        loc = weather.tag.split("_")[0]
+        color = idea_to_color[loc]
+    
+        period_totals, per_location_var, per_location_cvar, min_cvar = score_fitness(wai, weather)
+        print("fitness [kg/kg]: ", min_cvar)
+        assert period_totals.max() < max_score
+
+        # KDE
+        kde = gaussian_kde(period_totals.values)
+        density = kde(x_grid)
+
+        plt.plot(x_grid, density, color=color, lw=3, label=loc)
+
+        below_var = x_grid < per_location_var[loc]
+        plt.fill_between(x_grid[below_var], density[below_var], alpha=0.25, color=color)
+
+        ax.axvline(min_cvar, linestyle="--", color=color)
+        ax.text(
+            min_cvar, ax.get_ylim()[1] * 0.8, f"{int(alpha)}%-CVaR",
+            ha="center", va="bottom",
+            bbox=dict(facecolor="white", edgecolor="none", boxstyle="round,pad=0.2", alpha=1.0)
+        )
+        
+        ax.set_xlabel("cumulative water delivery [kg H$_2$O/kg sorbent]")
+        ax.set_ylabel(f"density")
+        plt.xlim([0, max_score])
+        plt.ylim(ymin=0)
         plt.legend()
         plt.tight_layout()
 
-        # plt.savefig(weather.tag + "eg_var.pdf", format="pdf")
+        plt.savefig(weather.tag + "/best_wai_water_del_distn.pdf", format="pdf")
         plt.show()
 
     return (draw_fitness_scores,)
@@ -1293,7 +1320,6 @@ def _(
     alpha,
     calendar,
     dropdown,
-    figsize,
     idea_to_color,
     n_day_period,
     plt,
@@ -1318,7 +1344,7 @@ def _(
         )
         period_totals["month"] = period_totals["period_label"].str.split("-").str[1].astype(int)
 
-        fig, ax = plt.subplots(figsize=figsize)
+        fig, ax = plt.subplots()
     
         if boundary_color:
             fig.patch.set_edgecolor(boundary_color)
@@ -1989,7 +2015,7 @@ def _(mo):
 
 
 @app.cell
-def _(alpha, figsize, fitnesses_gen, pd, plt, sns, weather):
+def _(alpha, fitnesses_gen, pd, plt, sns, weather):
     def viz_fitness_progress(fitnesses_gen):
         data = pd.DataFrame(
             [
@@ -2000,7 +2026,7 @@ def _(alpha, figsize, fitnesses_gen, pd, plt, sns, weather):
             columns=['generation', 'fitness [kg H$_2$O/kg sorbent]']
         )
 
-        fig, ax = plt.subplots(figsize=[figsize[0]*1.1, figsize[1]])
+        fig, ax = plt.subplots()
 
         sns.stripplot(
             data, 
@@ -2008,7 +2034,7 @@ def _(alpha, figsize, fitnesses_gen, pd, plt, sns, weather):
             hue="generation", color="C2", palette="crest", legend=False,
             ax=ax, clip_on=False
         )
-        plt.ylabel(f"best {alpha:.0f}%-CVaR\n[kg H$_2$O/kg sorbent]")
+        plt.ylabel(f"{alpha:.0f}%-CVaR\n cumulative water delivery\n[kg H$_2$O/kg sorbent]")
         plt.tick_params(axis='x', labelrotation=90)
         # plt.axhline(
         #     y=step_fitnesses[id_opt_step], 
@@ -2244,7 +2270,8 @@ def _(T_range, colors, mpl, np, p_ovr_p0_ticks, plt):
         # put water delivery there
         plt.arrow(
             p_ovr_p0_night, w_night, 0, w_day - w_night, 
-            color="black", head_width=0.008, length_includes_head=True
+            color="black", head_width=0.008, length_includes_head=True,
+            lw=2, zorder=10
         )
         wdel_label = f" water delivery:\n {w_night-w_day:0.2f} kg/kg"
     
@@ -2474,18 +2501,20 @@ def _(
             density = kde(x_grid)
 
             plt.plot(x_grid, density, color=color, lw=3, label=loc)
-            plt.fill_between(x_grid, density, alpha=0.05, color=color)
+
+            below_var = x_grid < per_location_var[loc]
+            plt.fill_between(x_grid[below_var], density[below_var], alpha=0.05, color=color)
     
             ax.axvline(min_cvar, linestyle="--", color=color)
         
-        ax.set_xlabel("cumulative water delivered\n[kg H$_2$O/kg sorbent]")
+        ax.set_xlabel("cumulative water delivery [kg H$_2$O/kg sorbent]")
         ax.set_ylabel(f"density")   
     
         ax.set_xlim([0.0, max_score])
         ax.set_ylim(ymin=0.0)
     
         plt.legend()
-
+        plt.tight_layout()
         plt.savefig("compare_fitnesses.pdf", format="pdf")
         plt.show()
 
@@ -2569,14 +2598,26 @@ def _(loc_A, loc_B, viz_cities):
 
 
 @app.cell
-def _(gaussian_kde, my_colors, n_day_period, np, plt, score_fitness, w_max):
+def _(
+    gaussian_kde,
+    idea_to_color,
+    my_colors,
+    n_day_period,
+    np,
+    plt,
+    score_fitness,
+    w_max,
+):
     def viz_mismatch_fitness(wai, weather, loc_A, loc_B):
         max_score = w_max * n_day_period
         x_grid = np.linspace(0, max_score, 150)
 
         fig, ax = plt.subplots()
+        fig.patch.set_edgecolor(idea_to_color[loc_A])
+        fig.patch.set_linewidth(4)
 
         color = my_colors[-1] # gray
+        color = idea_to_color[loc_B]
     
         period_totals, per_location_var, per_location_cvar, min_cvar = score_fitness(wai, weather)
         print("fitness [kg/kg]: ", min_cvar)
@@ -2586,13 +2627,20 @@ def _(gaussian_kde, my_colors, n_day_period, np, plt, score_fitness, w_max):
         kde = gaussian_kde(period_totals.values)
         density = kde(x_grid)
 
-        label = f"opt sorbent for {loc_A} in {loc_B}"
-        plt.plot(x_grid, density, color=color, lw=3, label=label)
-        plt.fill_between(x_grid, density, alpha=0.05, color=color)
+        # label = f"opt sorbent for {loc_A} in {loc_B}"
+        plt.plot(x_grid, density, color=color, lw=3, label=loc_B)
+
+        below_var = x_grid < per_location_var[loc_B]
+        plt.fill_between(x_grid[below_var], density[below_var], alpha=0.25, color=color)
 
         ax.axvline(min_cvar, linestyle="--", color=color)
+        # ax.text(
+        #     min_cvar, ax.get_ylim()[1] * 0.8, f"{int(alpha)}%-CVaR",
+        #     ha="center", va="bottom",
+        #     bbox=dict(facecolor="white", edgecolor="none", boxstyle="round,pad=0.2", alpha=1.0)
+        # )
         
-        ax.set_xlabel("cumulative water delivered\n[kg H$_2$O/kg sorbent]")
+        ax.set_xlabel("cumulative water delivery\n[kg H$_2$O/kg sorbent]")
         ax.set_ylabel(f"density")   
     
         ax.set_xlim([0.0, max_score])
@@ -2600,6 +2648,7 @@ def _(gaussian_kde, my_colors, n_day_period, np, plt, score_fitness, w_max):
     
         plt.legend()
 
+        plt.tight_layout()
         plt.savefig(f"{loc_A}_to_{loc_B}.pdf", format="pdf")
         plt.show()
 
@@ -2640,7 +2689,7 @@ def _(best_wai_B):
 def _(best_wai_A, loc_A, loc_B, viz_water_del, wdel_diff_data, weather_B):
     viz_water_del(
         best_wai_A, weather_B, 
-        wdel_diff_data.iloc[10]["date"],
+        wdel_diff_data.iloc[1]["date"],
         # boundary_color=idea_to_color[other_tag],
         savename=f"failure_{loc_A}_in_{loc_B}"
     )
