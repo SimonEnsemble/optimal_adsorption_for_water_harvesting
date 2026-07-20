@@ -1771,11 +1771,20 @@ def _(
     warnings,
 ):
     def evolve(
-        wais, weather, n_elite=5, tourney_size=10, 
-        n_rand=15, n_mutate=15, eps=0.05, verbose=False, seed=1993
+        wais, weather, 
+        # fractions 
+        f_elite=0.1, f_tourney=0.3, 
+        f_rand=0.25, n_mutate=0.15, eps=0.05, verbose=False, seed=1993,
+        stepify_prob=0.2
     ):  
         # what's the population size?
         pop_size = np.shape(wais)[0]
+
+        # calculate number of elite etc
+        n_elite = int(pop_size * f_elite)
+        tourney_size = int(pop_size * f_tourney)
+        n_rand = int(pop_size * f_rand)
+        n_mutate = int(pop_size * n_mutate)
 
         # max water adsorption
         w_max = wais[0].w_max
@@ -1800,7 +1809,7 @@ def _(
         new_wais = [wais[i_elite] for i_elite in ids_elite]
         # local search
         for elite_wai in new_wais:
-            if np.random.rand() < 0.2:
+            if np.random.rand() < stepify_prob:
                 ls_stepify(elite_wai, weather)
 
         # tournament selection
@@ -1848,7 +1857,7 @@ def _(evolve, gen_initial_pop, np, plt, score_fitness, weather):
     fitnesses = np.array([score_fitness(wai, weather)[-1] for wai in wais])
 
     # second generation
-    new_wais = evolve(wais, weather, n_elite=5)
+    new_wais = evolve(wais, weather)
     new_fitnesses = np.array(
         [score_fitness(new_wai, weather)[-1] for new_wai in new_wais]
     )
@@ -1879,8 +1888,10 @@ def _(mo):
 
 
 @app.cell
-def _(evolve, gen_initial_pop, np, score_fitness):
-    def do_evolution(weather, n_generations, pop_size, dim):
+def _(evolve, gen_initial_pop, ls_stepify, np, score_fitness):
+    def do_evolution(weather, n_generations, pop_size, dim, stepify_prob=0.2, seed=137):
+        np.random.seed(seed)
+    
         # generate population
         wais = gen_initial_pop(pop_size, dim)
 
@@ -1894,13 +1905,14 @@ def _(evolve, gen_initial_pop, np, score_fitness):
         # evolve over generations
         for g in range(1, n_generations):
             print("Gen: ", g)
-            wais = evolve(wais, weather)
+            wais = evolve(wais, weather, stepify_prob=stepify_prob)
             fitnesses = np.array([score_fitness(wai, weather)[-1] for wai in wais])
 
             fitnesses_gen.append(fitnesses)
             best_wai_gen.append(wais[np.argmax(fitnesses)])
 
         best_wai = wais[np.argmax(fitnesses)]
+        ls_stepify(best_wai, weather)
         best_wai.label = "optimal"
         best_period_totals, _, _, best_fitness = score_fitness(best_wai, weather, verbose=True)
 
@@ -1911,12 +1923,19 @@ def _(evolve, gen_initial_pop, np, score_fitness):
 
 @app.cell
 def _(do_evolution, run_evol_cbox, weather):
-    pop_size = 30
-    n_generations = 25
+    is_toy_scenario = "Riley" in weather.tag
+
+    if is_toy_scenario:
+        print("TOY SCENARIO")
+        pop_size = 10
+        n_generations = 20
+    else:
+        pop_size = 30
+        n_generations = 25
     n = 50
     if run_evol_cbox.value:
         fitnesses_gen, best_wai_gen, best_wai, best_period_totals, best_fitness = do_evolution(
-            weather, n_generations, pop_size, n
+            weather, n_generations, pop_size, n, stepify_prob=0.05 if is_toy_scenario else 0.2, seed=12
         )
     return best_fitness, best_wai, best_wai_gen, fitnesses_gen, n
 
@@ -1930,10 +1949,10 @@ def _(mo):
 
 
 @app.cell
-def _(best_wai, dropdown, idea_to_color, weather):
+def _(best_wai, weather):
     best_wai.draw(
-        boundary_color=None if dropdown.value == "mix" else idea_to_color[dropdown.value],
-        savename=f"best_wai_{weather.tag}"
+        # boundary_color=None if dropdown.value == "mix" else idea_to_color[dropdown.value],
+        savename=weather.tag + f"/best_wai"
     )
     return
 
@@ -1951,11 +1970,11 @@ def _(best_wai, draw_fitness_scores, weather):
 
 
 @app.cell
-def _(best_wai, dropdown, idea_to_color, viz_monthly_water_del, weather):
+def _(best_wai, viz_monthly_water_del, weather):
     viz_monthly_water_del(
         best_wai, weather,
-        boundary_color=None if dropdown.value == "mix" else idea_to_color[dropdown.value],
-        savename=f"best_wai_fitness_{weather.tag}",
+        # boundary_color=None if dropdown.value == "mix" else idea_to_color[dropdown.value],
+        savename=weather.tag + f"/best_wai_fitness",
         cvar_legend_loc="lower right", loc_legend_loc="lower left", incl_cvar_legend=True
     )
     return
@@ -1998,7 +2017,7 @@ def _(alpha, figsize, fitnesses_gen, pd, plt, sns, weather):
         plt.ylim(ymin=0)
         plt.tight_layout()
         plt.savefig(
-            weather.tag + "_fitness_progress.pdf", format="pdf"
+             weather.tag + "/fitness_progress.pdf", format="pdf"
         )
         plt.show()
 
@@ -2055,7 +2074,7 @@ def _(
 
         plt.tight_layout()
         plt.savefig(
-            weather.tag + "_wai_progress.pdf", format="pdf"
+            weather.tag + "/wai_progress.pdf", format="pdf"
         )
         plt.show()
 
@@ -2530,7 +2549,7 @@ def _(mo):
 @app.cell
 def _(unpickle):
     # bring A -> B
-    loc_A = "Riley"
+    loc_A = "Socorro"
     season_A = "summer"
 
     loc_B = "Stovepipe"
@@ -2649,7 +2668,7 @@ def _(dropdown, np, pd, plt):
             if self.data["RH[%]"].max() <= 1:
                 self.data["RH[%]"] = self.data["RH[%]"] * 100
 
-        def draw(self, wai=None):
+        def draw(self, wai=None, savename=None):
             fig, ax = plt.subplots()
 
             plt.xlabel("relative humidity, $p / [p_0(T)]$")
@@ -2657,7 +2676,7 @@ def _(dropdown, np, pd, plt):
 
             plt.scatter(
                 self.data["RH[%]"] / 100.0, self.data["Water Uptake [kg kg-1]"],
-                label=f"{self.name}", color="black", facecolors="none", lw=1.5, s=30
+                label=f"{self.name}", color="black", facecolors="none", lw=1.5, s=30, zorder=10
             )
             if wai:
                 p_ovr_p0s = np.linspace(0, 1, 100)
@@ -2665,6 +2684,12 @@ def _(dropdown, np, pd, plt):
                 plt.plot(p_ovr_p0s, ws, label=f"{wai.label} for {dropdown.value}", lw=3)
 
             plt.legend()
+            plt.xlim([0, 1])
+            plt.ylim(ymin=0)
+        
+            plt.tight_layout()
+            if savename:
+                plt.savefig(savename + ".pdf", format="pdf", bbox_inches="tight")
 
             plt.show()
 
@@ -2704,6 +2729,20 @@ def _(data_I_got, mo):
 @app.cell
 def _(best_wai, exp_mof_slider, expt_isotherms):
     expt_isotherms[exp_mof_slider.value].draw(best_wai)
+    return
+
+
+@app.cell
+def _(expt_isotherms, unpickle, weather):
+    expt_isotherms[2].draw(
+        unpickle("Riley_summer_opt_isotherm"),
+        savename=weather.tag + "/shape_match"
+    )
+    return
+
+
+@app.cell
+def _():
     return
 
 
