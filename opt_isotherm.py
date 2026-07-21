@@ -54,6 +54,7 @@ def _():
         colors,
         comb,
         datetime,
+        figsize,
         gaussian_kde,
         inset_axes,
         matplotlib,
@@ -90,12 +91,13 @@ def _(my_colors, theme_colors):
         "night": my_colors[2],
         "water ads": my_colors[0],
         "Riley": theme_colors[0],
-        "Stovepipe": theme_colors[1],
-        "Socorro": theme_colors[2],
+        "Stovepipe": theme_colors[2],
+        "Socorro": theme_colors[1],
         "Utqiagvik": theme_colors[4],
         "Yuma": my_colors[-1],
         "fitness": theme_colors[-1],
-        "step": my_colors[-1]
+        "step": my_colors[-1],
+        "mix": my_colors[4]
     }
     idea_to_color["ads"] = idea_to_color["night"]
     idea_to_color["des"] = idea_to_color["day"]
@@ -181,7 +183,7 @@ def _(np, plt):
         plt.scatter(100.0, water_p0(100.0))
         plt.show()
 
-    viz_water_p0()
+    # viz_water_p0()
     return
 
 
@@ -253,7 +255,9 @@ def _():
 
 @app.cell
 def _(ccrs, cfeature, city_to_coords, idea_to_color, plt):
-    def viz_cities(cities, city_AB=None, savename=None):
+    def viz_cities(
+        cities, city_AB=None, savename=None, 
+        extent=[-168, -99, 30, 71],
         xy_shift = {
             "Riley": [6.1, 0],
             "Stovepipe": [-9.75, 0.0],
@@ -261,6 +265,8 @@ def _(ccrs, cfeature, city_to_coords, idea_to_color, plt):
             "Utqiagvik": [0, -3.75],
             "Yuma": [-7.5, 0]
         }
+    ):
+    
 
         fig, ax = plt.subplots(
             subplot_kw={"projection": ccrs.PlateCarree()}
@@ -272,7 +278,7 @@ def _(ccrs, cfeature, city_to_coords, idea_to_color, plt):
         ax.add_feature(cfeature.BORDERS, linewidth=0.5)
         ax.add_feature(cfeature.COASTLINE)
         ax.add_feature(cfeature.STATES, linewidth=0.5, edgecolor="gray")
-        ax.set_extent([-168, -99, 30, 71])  # USA bounds
+        ax.set_extent(extent)  # USA bounds
 
         for city in cities:
             lon = city_to_coords[city][0]
@@ -284,7 +290,7 @@ def _(ccrs, cfeature, city_to_coords, idea_to_color, plt):
                     transform=ccrs.PlateCarree(), 
                     bbox=dict(facecolor="white", alpha=0.7, edgecolor="none", boxstyle="round,pad=0.2")
             )
-        
+
         if city_AB:
             lon1, lat1 = city_to_coords[city_AB[0]]
             lon2, lat2 = city_to_coords[city_AB[1]]
@@ -755,7 +761,7 @@ def _(Weather, dropdown, dropdown_time, get_weather_datas, mixed_locations):
             weather_datas = get_weather_datas([dropdown.value], summer_months, yrs)
         elif dropdown.value == "mix":
             weather_datas = get_weather_datas(mixed_locations, summer_months, yrs, randomize_location=False)
-    
+
         return Weather(
             # list of weather data
             weather_datas,
@@ -968,7 +974,13 @@ def _():
 
 
 @app.cell
-def _(BernPolyBasis, colors, inset_axes, mpl, np, plt, w_max):
+def _(mpl):
+    temp_colormap = mpl.colormaps['inferno'] # or 'plasma', 'coolwarm', etc.
+    return (temp_colormap,)
+
+
+@app.cell
+def _(BernPolyBasis, colors, inset_axes, np, plt, temp_colormap, w_max):
     class WaterAdsorptionIsotherm:
         def __init__(
             self, n, Tref=25.0, w_max=w_max, bs=None
@@ -1075,18 +1087,17 @@ def _(BernPolyBasis, colors, inset_axes, mpl, np, plt, w_max):
             plt.xlabel("relative humidity, $p / [p_0(T)]$")
             plt.ylabel("water adsorption\n[kg H$_2$O/kg sorbent]")
 
-            colormap = mpl.colormaps['coolwarm'] # or 'plasma', 'coolwarm', etc.
             norm = colors.Normalize(vmin=0.0, vmax=70.0)
 
             for T in np.linspace(0, 70, 6):
                 plt.plot(
                     p_over_p0s, 
                     [self.water_ads(T, p_over_p0) for p_over_p0 in p_over_p0s],
-                    color=colormap(norm(T)),
+                    color=temp_colormap(norm(T)),
                     clip_on=False
                 )
 
-            sm = plt.cm.ScalarMappable(cmap=colormap, norm=norm)
+            sm = plt.cm.ScalarMappable(cmap=temp_colormap, norm=norm)
             cax = inset_axes(
                 ax, width="4%", height="60%", loc="lower right",
                 bbox_to_anchor=(-0.05, 0.05, 0.9, 0.95),  # (x0, y0, width, height) in axes fraction
@@ -1112,7 +1123,7 @@ def _(BernPolyBasis, colors, inset_axes, mpl, np, plt, w_max):
 def _(WaterAdsorptionIsotherm):
     wai = WaterAdsorptionIsotherm(10)
     wai.endow_stepped_isotherm(3)
-    wai.draw(boundary_color="green")
+    # wai.draw(boundary_color="green")
     return (wai,)
 
 
@@ -1229,34 +1240,6 @@ def _(score_fitness, wai, weather):
 
 
 @app.cell
-def _(matplotlib, n_day_period, np, w_max):
-    def draw_fitness_ax(
-        ax, scores, fitness, color, label, 
-        alpha=10, orientation="vertical"
-    ):
-        max_score = w_max * n_day_period
-        bins = np.linspace(0, max_score, 17)
-        assert np.max(scores) < max_score
-
-        face_rgba = matplotlib.colors.to_rgba(color, alpha=0.5)
-        edge_rgba = matplotlib.colors.to_rgba(color, alpha=1.0)
-    
-        ax.hist(
-            scores, bins=bins, histtype="stepfilled",
-            facecolor=face_rgba, edgecolor=edge_rgba, linewidth=1.5, label=label
-        )
-
-        ax.set_xlabel("cumulative water delivered\n[kg H$_2$O/kg sorbent]")
-        ax.set_ylabel(f"# {n_day_period}-day periods")   
-        ax.set_xlim([0.0, max_score])
-        ax.set_ylim(ymin=0.0)
-
-        ax.axvline(fitness, linestyle="--", color=color)
-
-    return (draw_fitness_ax,)
-
-
-@app.cell
 def _(
     alpha,
     gaussian_kde,
@@ -1272,10 +1255,10 @@ def _(
         x_grid = np.linspace(0, max_score, 150)
 
         fig, ax = plt.subplots()
-    
+
         loc = weather.tag.split("_")[0]
         color = idea_to_color[loc]
-    
+
         period_totals, per_location_var, per_location_cvar, min_cvar = score_fitness(wai, weather)
         print("fitness [kg/kg]: ", min_cvar)
         assert period_totals.max() < max_score
@@ -1295,11 +1278,12 @@ def _(
             ha="center", va="bottom",
             bbox=dict(facecolor="white", edgecolor="none", boxstyle="round,pad=0.2", alpha=1.0)
         )
-        
+
         ax.set_xlabel("cumulative water delivery [kg H$_2$O/kg sorbent]")
         ax.set_ylabel(f"density")
         plt.xlim([0, max_score])
         plt.ylim(ymin=0)
+        plt.yticks([0])
         plt.legend()
         plt.tight_layout()
 
@@ -1311,7 +1295,8 @@ def _(
 
 @app.cell
 def _(draw_fitness_scores, wai, weather):
-    draw_fitness_scores(wai, weather)
+    if not weather.tag == "mix_summer":
+        draw_fitness_scores(wai, weather)
     return
 
 
@@ -1326,13 +1311,11 @@ def _(
     score_fitness,
     sns,
     w_max,
-    wai,
-    weather,
 ):
     def viz_monthly_water_del(
         wai, weather, 
         legend_outside=dropdown.value=="mix", savename=None, boundary_color=None,
-        loc_legend_loc="upper left", cvar_legend_loc="upper left", incl_cvar_legend=True
+        loc_legend_loc="upper left", cvar_legend_loc="upper left", incl_cvar_legend=True, incl_loc_legend=True
     ):
         period_totals, per_location_var, per_location_cvar, min_cvar = score_fitness(wai, weather, verbose=True)
 
@@ -1345,18 +1328,19 @@ def _(
         period_totals["month"] = period_totals["period_label"].str.split("-").str[1].astype(int)
 
         fig, ax = plt.subplots()
-    
+
         if boundary_color:
             fig.patch.set_edgecolor(boundary_color)
             fig.patch.set_linewidth(4)
-        
+
         ax = sns.swarmplot(
             data=period_totals, 
             y="cumulative water delivery\n[kg H$_2$O/kg sorbent]", 
             x="month", 
             palette=idea_to_color,
             hue="location",
-            clip_on=False
+            clip_on=False,
+            legend=incl_loc_legend
             # size=10
         )
         # plt.title(f"{alpha:.0f}%-CVaR: {min_cvar:.1f} kg H$_2$O/kg sorbent")
@@ -1373,14 +1357,15 @@ def _(
         # The last handle/label is the axhline ("CVaR"); split it off
         location_handles, location_labels = location_handles[:-1], location_labels[:-1]
 
-        location_legend = ax.legend(
-            location_handles, location_labels,
-            title="location",
-            bbox_to_anchor=(1.02, 1) if legend_outside else None,
-            loc=loc_legend_loc,
-            borderaxespad=0
-        )
-        ax.add_artist(location_legend)  # keep this legend from being overwritten
+        if incl_loc_legend:
+            location_legend = ax.legend(
+                location_handles, location_labels,
+                title="location",
+                bbox_to_anchor=(1.02, 1) if legend_outside else None,
+                loc=loc_legend_loc,
+                borderaxespad=0
+            )
+            ax.add_artist(location_legend)  # keep this legend from being overwritten
 
         if incl_cvar_legend:
             ax.legend(
@@ -1396,7 +1381,7 @@ def _(
 
         plt.show()
 
-    viz_monthly_water_del(wai, weather, legend_outside=False)
+    # viz_monthly_water_del(wai, weather, legend_outside=False)
     return (viz_monthly_water_del,)
 
 
@@ -1409,7 +1394,16 @@ def _(mo):
 
 
 @app.cell
-def _(draw_fitness_ax, my_colors, np, p_ovr_p0_ticks, plt, score_fitness):
+def _(
+    matplotlib,
+    my_colors,
+    n_day_period,
+    np,
+    p_ovr_p0_ticks,
+    plt,
+    score_fitness,
+    w_max,
+):
     def compare_wais(wais, weather, savetag=""):
         the_colors = [my_colors[0]] + my_colors[3:]
         p_over_p0s = np.linspace(0, 1.0, 100)
@@ -1446,7 +1440,25 @@ def _(draw_fitness_ax, my_colors, np, p_ovr_p0_ticks, plt, score_fitness):
         for w, wai in enumerate(wais):
             period_totals, per_location_var, per_location_cvar, fitness = score_fitness(wai, weather)
             print(f"fitness WAI {wai.label}: {fitness}")
-            draw_fitness_ax(ax_top, period_totals.values, fitness, the_colors[w], label=w)
+
+            max_score = w_max * n_day_period
+            bins = np.linspace(0, max_score, 17)
+            assert np.max(period_totals.values) < max_score
+
+            face_rgba = matplotlib.colors.to_rgba(the_colors[w], alpha=0.5)
+            edge_rgba = matplotlib.colors.to_rgba(the_colors[w], alpha=1.0)
+    
+            ax_top.hist(
+                period_totals.values, bins=bins, histtype="stepfilled",
+                facecolor=face_rgba, edgecolor=edge_rgba, linewidth=1.5
+            )
+
+            ax_top.set_xlabel("cumulative water delivered\n[kg H$_2$O/kg sorbent]")
+            ax_top.set_ylabel(f"# {n_day_period}-day periods")   
+            ax_top.set_xlim([0.0, max_score])
+            ax_top.set_ylim(ymin=0.0)
+
+            ax_top.axvline(fitness, linestyle="--", color=the_colors[w])
 
         plt.show()
 
@@ -1917,7 +1929,7 @@ def _(mo):
 def _(evolve, gen_initial_pop, ls_stepify, np, score_fitness):
     def do_evolution(weather, n_generations, pop_size, dim, stepify_prob=0.2, seed=137):
         np.random.seed(seed)
-    
+
         # generate population
         wais = gen_initial_pop(pop_size, dim)
 
@@ -1975,9 +1987,9 @@ def _(mo):
 
 
 @app.cell
-def _(best_wai, weather):
+def _(best_wai, dropdown, idea_to_color, weather):
     best_wai.draw(
-        # boundary_color=None if dropdown.value == "mix" else idea_to_color[dropdown.value],
+        boundary_color=idea_to_color["mix"] if "mix" in dropdown.value else None,
         savename=weather.tag + f"/best_wai"
     )
     return
@@ -2001,7 +2013,8 @@ def _(best_wai, viz_monthly_water_del, weather):
         best_wai, weather,
         # boundary_color=None if dropdown.value == "mix" else idea_to_color[dropdown.value],
         savename=weather.tag + f"/best_wai_fitness",
-        cvar_legend_loc="lower right", loc_legend_loc="lower left", incl_cvar_legend=True
+        legend_outside=False,
+        cvar_legend_loc="upper left", loc_legend_loc="upper right", incl_cvar_legend=True
     )
     return
 
@@ -2152,13 +2165,11 @@ def _(mo):
 
 @app.cell
 def _(
-    best_wai,
     plt,
     score_fitness,
     set_weather_cols_axis,
     short_to_proper_weather_cols,
     sns,
-    weather,
     weather_cols,
 ):
     def viz_daily_performance(best_wai, weather):
@@ -2204,7 +2215,7 @@ def _(
 
         plt.show()
 
-    viz_daily_performance(best_wai, weather)
+    # viz_daily_performance(best_wai, weather)
     return
 
 
@@ -2217,8 +2228,8 @@ def _(mo):
 
 
 @app.cell
-def _(T_range, colors, mpl, np, p_ovr_p0_ticks, plt):
-    def viz_water_del(wai, weather, date, savename="", boundary_color=None):
+def _(T_range, colors, np, p_ovr_p0_ticks, plt, temp_colormap):
+    def viz_water_del(wai, weather, date, savename=None, boundary_color=None):
         day_data = weather.ads_des_conditions[
             weather.ads_des_conditions["date"].apply(
                 lambda d: d == date
@@ -2236,7 +2247,6 @@ def _(T_range, colors, mpl, np, p_ovr_p0_ticks, plt):
         plt.xlim(0, 1.0)
         plt.ylabel("water adsorption\n[kg H$_2$O/kg sorbent]")
 
-        colormap = mpl.colormaps['coolwarm'] # or 'plasma', 'coolwarm', etc.
         norm = colors.Normalize(vmin=T_range[0], vmax=T_range[1])
 
         # capture conditions
@@ -2255,13 +2265,13 @@ def _(T_range, colors, mpl, np, p_ovr_p0_ticks, plt):
             plt.plot(
                 p_over_p0s, 
                 [wai.water_ads(T, p_over_p0) for p_over_p0 in p_over_p0s],
-                color=colormap(norm(T)),
+                color=temp_colormap(norm(T)),
                 label=f"T = {T:0.1f}°C",
                 lw=3, clip_on=False
             )
             plt.scatter(
                 p_ovr_p0, w,
-                color=colormap(norm(T)), label=label, zorder=25,
+                color=temp_colormap(norm(T)), label=label, zorder=25,
                 marker="*", 
                 edgecolor="black",
                 s=150, clip_on=False
@@ -2274,7 +2284,7 @@ def _(T_range, colors, mpl, np, p_ovr_p0_ticks, plt):
             lw=2, zorder=10
         )
         wdel_label = f" water delivery:\n {w_night-w_day:0.2f} kg/kg"
-    
+
         # plt.text(
         #     p_ovr_p0_night + 0.01, (w_day + w_night) / 2,
         #     wdel_label,
@@ -2291,9 +2301,9 @@ def _(T_range, colors, mpl, np, p_ovr_p0_ticks, plt):
         plt.xlim([0, 1])
         plt.ylim(ymin=0.0)
 
-        if not savename == "":
+        if savename:
             plt.savefig(
-                weather.tag + savename + ".pdf", format="pdf", bbox_inches="tight"
+                savename + ".pdf", format="pdf", bbox_inches="tight"
             )
         plt.show()
 
@@ -2385,7 +2395,12 @@ def _(best_wai_step):
 
 @app.cell
 def _(best_wai_step, viz_monthly_water_del, weather):
-    viz_monthly_water_del(best_wai_step, weather)
+    viz_monthly_water_del(
+        best_wai_step, weather, 
+        incl_cvar_legend=False, 
+        incl_loc_legend=False,
+        savename=weather.tag + f"/best_step_wai_fitness",
+    )
     return
 
 
@@ -2430,6 +2445,66 @@ def _(colors, id_opt_step, mpl, np, plt, step_fitnesses, step_wais, weather):
 
 
 @app.cell
+def _(my_colors):
+    my_colors
+    return
+
+
+@app.cell
+def _(
+    figsize,
+    gaussian_kde,
+    idea_to_color,
+    n_day_period,
+    np,
+    plt,
+    score_fitness,
+    w_max,
+):
+    def compare_best_wai_and_best_wai_step(best_wai, best_wai_step, weather):
+        max_score = w_max * n_day_period
+        x_grid = np.linspace(0, max_score, 150)
+
+        fig, ax = plt.subplots(figsize=[figsize[0], figsize[1]*0.6])
+
+        the_colors = [idea_to_color["mix"], idea_to_color["step"]]
+        labels = ["optimal", "optimal step"]
+        for w, wai in enumerate([best_wai, best_wai_step]):
+            period_totals, per_location_var, per_location_cvar, min_cvar = score_fitness(wai, weather)
+            print("fitness [kg/kg]: ", min_cvar)
+            assert period_totals.max() < max_score
+    
+            # KDE
+            kde = gaussian_kde(period_totals.values)
+            density = kde(x_grid)
+    
+            plt.plot(x_grid, density, color=the_colors[w], lw=3, label=labels[w], clip_on=False)
+            # below_var = x_grid < per_location_var["mix"]
+            # plt.fill_between(x_grid[below_var], density[below_var], alpha=0.25, color=the_colors[w])
+    
+            ax.axvline(min_cvar, linestyle="--", color=the_colors[w], clip_on=False)
+
+        ax.set_xlabel("cumulative water delivery [kg H$_2$O/kg sorbent]")
+        ax.set_ylabel(f"density")
+        plt.xlim([0, max_score])
+        plt.ylim(ymin=0)
+        plt.yticks([0])
+        plt.legend()
+        plt.tight_layout()
+
+        plt.savefig(weather.tag + "/comparison_w_step.pdf", format="pdf")
+        plt.show()
+
+    return (compare_best_wai_and_best_wai_step,)
+
+
+@app.cell
+def _(best_wai, best_wai_step, compare_best_wai_and_best_wai_step, weather):
+    compare_best_wai_and_best_wai_step(best_wai, best_wai_step, weather)
+    return
+
+
+@app.cell
 def _(best_fitness, best_fitness_step):
     print(
         "% mass savings over a step: ",
@@ -2439,8 +2514,16 @@ def _(best_fitness, best_fitness_step):
 
 
 @app.cell
-def _(best_wai_step):
-    best_wai_step.draw()
+def _(best_wai_step, dropdown, idea_to_color, weather):
+    best_wai_step.draw(
+        boundary_color=idea_to_color["step"] if "mix" in dropdown.value else None,
+        savename=weather.tag + "/opt_step"
+    )
+    return
+
+
+@app.cell
+def _():
     return
 
 
@@ -2466,6 +2549,12 @@ def _(pickle):
 
 
 @app.cell
+def _(os):
+    os.makedirs("comparison", exist_ok=True)
+    return
+
+
+@app.cell
 def _(mixed_locations, unpickle):
     best_wais = [unpickle(loc + "_summer_opt_isotherm") for loc in mixed_locations]
     weathers = [unpickle(loc + "_summer_weather") for loc in mixed_locations]
@@ -2487,11 +2576,11 @@ def _(
         x_grid = np.linspace(0, max_score, 150)
 
         fig, ax = plt.subplots()
-    
+
         for wai, weather in zip(wais, weathers):
             loc = weather.tag.split("_")[0]
             color = idea_to_color[loc]
-        
+
             period_totals, per_location_var, per_location_cvar, min_cvar = score_fitness(wai, weather)
             print("fitness [kg/kg]: ", min_cvar)
             assert period_totals.max() < max_score
@@ -2504,18 +2593,18 @@ def _(
 
             below_var = x_grid < per_location_var[loc]
             plt.fill_between(x_grid[below_var], density[below_var], alpha=0.05, color=color)
-    
+
             ax.axvline(min_cvar, linestyle="--", color=color)
-        
+
         ax.set_xlabel("cumulative water delivery [kg H$_2$O/kg sorbent]")
         ax.set_ylabel(f"density")   
-    
+
         ax.set_xlim([0.0, max_score])
         ax.set_ylim(ymin=0.0)
-    
+
         plt.legend()
         plt.tight_layout()
-        plt.savefig("compare_fitnesses.pdf", format="pdf")
+        plt.savefig("comparison/compare_fitnesses.pdf", format="pdf")
         plt.show()
 
     return (compare_all_wai_fitness,)
@@ -2554,7 +2643,7 @@ def _(idea_to_color, np, p_ovr_p0_ticks, plt):
         plt.ylim(0, wais[0].w_max)
         plt.legend(title="location")
         plt.savefig(
-            "best_wai_comparison.pdf", format="pdf", bbox_inches="tight"
+            "comparison/best_wai_comparison.pdf", format="pdf", bbox_inches="tight"
         )
         plt.show()
 
@@ -2578,10 +2667,10 @@ def _(mo):
 @app.cell
 def _(unpickle):
     # bring A -> B
-    loc_A = "Socorro"
+    loc_A = "Stovepipe"
     season_A = "summer"
 
-    loc_B = "Stovepipe"
+    loc_B = "Riley"
     season_B = "summer"
 
     best_wai_A = unpickle(loc_A + "_summer_opt_isotherm")
@@ -2592,8 +2681,37 @@ def _(unpickle):
 
 
 @app.cell
+def _(viz_cities):
+    viz_cities(
+        ["Riley"], 
+        savename=f"map_Riley",
+        extent=[-127, -110, 30, 50],
+        xy_shift = {
+            "Riley": [2.5, 0],
+            "Stovepipe": [-3.75, 0.0],
+            "Socorro": [0, 3.75],
+            "Utqiagvik": [0, -3.75],
+            "Yuma": [-7.5, 0]
+        }
+    )
+    return
+
+
+@app.cell
 def _(loc_A, loc_B, viz_cities):
-    viz_cities([loc_A, loc_B], city_AB=[loc_A, loc_B])
+    viz_cities(
+        [loc_A, loc_B], 
+        city_AB=[loc_A, loc_B], 
+        savename=f"comparison/{loc_A}_to_{loc_B}_map",
+        extent=[-127, -110, 30, 50],
+        xy_shift = {
+            "Riley": [2.5, 0],
+            "Stovepipe": [-3.75, 0.0],
+            "Socorro": [0, 3.75],
+            "Utqiagvik": [0, -3.75],
+            "Yuma": [-7.5, 0]
+        }
+    )
     return
 
 
@@ -2613,12 +2731,12 @@ def _(
         x_grid = np.linspace(0, max_score, 150)
 
         fig, ax = plt.subplots()
-        fig.patch.set_edgecolor(idea_to_color[loc_A])
-        fig.patch.set_linewidth(4)
+        # fig.patch.set_edgecolor(idea_to_color[loc_A])
+        # fig.patch.set_linewidth(4)
 
         color = my_colors[-1] # gray
         color = idea_to_color[loc_B]
-    
+
         period_totals, per_location_var, per_location_cvar, min_cvar = score_fitness(wai, weather)
         print("fitness [kg/kg]: ", min_cvar)
         assert period_totals.max() < max_score
@@ -2639,17 +2757,17 @@ def _(
         #     ha="center", va="bottom",
         #     bbox=dict(facecolor="white", edgecolor="none", boxstyle="round,pad=0.2", alpha=1.0)
         # )
-        
+
         ax.set_xlabel("cumulative water delivery\n[kg H$_2$O/kg sorbent]")
         ax.set_ylabel(f"density")   
-    
+
         ax.set_xlim([0.0, max_score])
         ax.set_ylim(ymin=0.0)
-    
+
         plt.legend()
 
         plt.tight_layout()
-        plt.savefig(f"{loc_A}_to_{loc_B}.pdf", format="pdf")
+        plt.savefig(f"comparison/{loc_A}_to_{loc_B}_fitness.pdf", format="pdf")
         plt.show()
 
     return (viz_mismatch_fitness,)
@@ -2689,9 +2807,9 @@ def _(best_wai_B):
 def _(best_wai_A, loc_A, loc_B, viz_water_del, wdel_diff_data, weather_B):
     viz_water_del(
         best_wai_A, weather_B, 
-        wdel_diff_data.iloc[1]["date"],
+        wdel_diff_data.iloc[0]["date"],
         # boundary_color=idea_to_color[other_tag],
-        savename=f"failure_{loc_A}_in_{loc_B}"
+        savename=f"comparison/failure_{loc_A}_in_{loc_B}"
     )
     return
 
@@ -2705,7 +2823,7 @@ def _(mo):
 
 
 @app.cell
-def _(dropdown, np, pd, plt):
+def _(idea_to_color, np, pd, plt):
     class ExptIsotherm:
         def __init__(self, name, T):
             self.name = name
@@ -2717,7 +2835,7 @@ def _(dropdown, np, pd, plt):
             if self.data["RH[%]"].max() <= 1:
                 self.data["RH[%]"] = self.data["RH[%]"] * 100
 
-        def draw(self, wai=None, savename=None):
+        def draw(self, wai=None, savename=None, loc=None):
             fig, ax = plt.subplots()
 
             plt.xlabel("relative humidity, $p / [p_0(T)]$")
@@ -2728,14 +2846,15 @@ def _(dropdown, np, pd, plt):
                 label=f"{self.name}", color="black", facecolors="none", lw=1.5, s=30, zorder=10
             )
             if wai:
+                color = idea_to_color[loc]
                 p_ovr_p0s = np.linspace(0, 1, 100)
                 ws = wai.water_ads(self.T, p_ovr_p0s)
-                plt.plot(p_ovr_p0s, ws, label=f"{wai.label} for {dropdown.value}", lw=3)
+                plt.plot(p_ovr_p0s, ws, label=f"{wai.label} for {loc}", lw=3, color=color)
 
             plt.legend()
             plt.xlim([0, 1])
             plt.ylim(ymin=0)
-        
+
             plt.tight_layout()
             if savename:
                 plt.savefig(savename + ".pdf", format="pdf", bbox_inches="tight")
@@ -2776,16 +2895,27 @@ def _(data_I_got, mo):
 
 
 @app.cell
-def _(best_wai, exp_mof_slider, expt_isotherms):
-    expt_isotherms[exp_mof_slider.value].draw(best_wai)
+def _(best_wai, exp_mof_slider, expt_isotherms, weather):
+    expt_isotherms[exp_mof_slider.value].draw(best_wai, loc=weather.tag.split("_")[0])
     return
 
 
 @app.cell
-def _(expt_isotherms, unpickle, weather):
+def _(expt_isotherms, unpickle):
+    expt_isotherms[1].draw(
+        unpickle("Socorro_summer_opt_isotherm"),
+        loc="Socorro",
+        savename="Socorro_summer/shape_match"
+    )
+    return
+
+
+@app.cell
+def _(expt_isotherms, unpickle):
     expt_isotherms[2].draw(
         unpickle("Riley_summer_opt_isotherm"),
-        savename=weather.tag + "/shape_match"
+        loc="Riley",
+        savename="Riley_summer/shape_match"
     )
     return
 
