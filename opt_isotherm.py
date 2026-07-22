@@ -746,17 +746,19 @@ def _(WeatherData, np, too_many_missing):
 
 @app.cell
 def _(Weather, dropdown, dropdown_time, get_weather_datas, mixed_locations):
-    # summer_months = [6, 7, 8] # meterological
-    all_months = list(range(1, 13))
-    summer_months = [5, 6, 7, 8, 9]
+    season_to_months = {
+        "all_yr": list(range(1, 13)),
+        "summer": [5, 6, 7, 8, 9],
+        "summer_met": [6, 7, 8] # meterological
+    }
     yrs = [2019, 2020, 2021, 2022, 2023, 2024, 2025]
 
-    def build_weather():
+    def build_weather(months):
         weather_datas = []
         if not dropdown.value == "mix":
-            weather_datas = get_weather_datas([dropdown.value], summer_months, yrs)
+            weather_datas = get_weather_datas([dropdown.value], months, yrs)
         elif dropdown.value == "mix":
-            weather_datas = get_weather_datas(mixed_locations, summer_months, yrs, randomize_location=False)
+            weather_datas = get_weather_datas(mixed_locations, months, yrs, randomize_location=False)
 
         return Weather(
             # list of weather data
@@ -765,7 +767,7 @@ def _(Weather, dropdown, dropdown_time, get_weather_datas, mixed_locations):
             dropdown.value + "_" + dropdown_time.value
         )
 
-    weather = build_weather()
+    weather = build_weather(season_to_months[dropdown_time.value])
     weather.ads_des_conditions
     return (weather,)
 
@@ -1143,6 +1145,11 @@ def attach_water_delivery(wai, weather, prefix=""):
 def _():
     n_day_period = 10
     return (n_day_period,)
+
+
+@app.cell
+def _():
+    return
 
 
 @app.cell
