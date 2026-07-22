@@ -266,7 +266,7 @@ def _(ccrs, cfeature, city_to_coords, idea_to_color, plt):
             "Yuma": [-7.5, 0]
         }
     ):
-    
+
 
         fig, ax = plt.subplots(
             subplot_kw={"projection": ccrs.PlateCarree()}
@@ -503,7 +503,7 @@ def _(T_range, idea_to_color, np, os, pd, plt):
 
         def viz_timeseries(
             self, save=False, incl_legend=True, 
-            legend_dx=0.0, legend_dy=0.0
+            legend_dx=0.0, legend_dy=0.0, savename=None
         ):
             ads = {'air': "k", 'surface': "k"}
 
@@ -565,6 +565,9 @@ def _(T_range, idea_to_color, np, os, pd, plt):
                    loc="center left"
             )#, loc="center left")
 
+            if savename:
+                plt.tight_layout()
+                plt.savefig(savename + ".pdf", format="pdf")
             plt.show()
 
         def _assert_in_T_range(self):
@@ -612,15 +615,8 @@ def _(WeatherData):
 
 
 @app.cell
-def _():
-
-    # gaps = dates.diff().dropna()
-    return
-
-
-@app.cell
 def _(wdata):
-    wdata.viz_timeseries()
+    wdata.viz_timeseries(savename="weather_timeseries_" + wdata.location)
     return
 
 
@@ -1274,7 +1270,7 @@ def _(
 
         ax.axvline(min_cvar, linestyle="--", color=color)
         ax.text(
-            min_cvar, ax.get_ylim()[1] * 0.8, f"{int(alpha)}%-CVaR",
+            min_cvar, ax.get_ylim()[1] * 0.8, f"{int(100-alpha)}%-CVaR",
             ha="center", va="bottom",
             bbox=dict(facecolor="white", edgecolor="none", boxstyle="round,pad=0.2", alpha=1.0)
         )
@@ -1369,7 +1365,7 @@ def _(
 
         if incl_cvar_legend:
             ax.legend(
-                [cvar_line], [f"{alpha:.0f}%-CVaR"],
+                [cvar_line], [f"{100-alpha:.0f}%-CVaR"],
                 bbox_to_anchor=(1.02, 0.5) if legend_outside else None,
                 loc=cvar_legend_loc,
                 title="fitness metric",
@@ -1447,7 +1443,7 @@ def _(
 
             face_rgba = matplotlib.colors.to_rgba(the_colors[w], alpha=0.5)
             edge_rgba = matplotlib.colors.to_rgba(the_colors[w], alpha=1.0)
-    
+
             ax_top.hist(
                 period_totals.values, bins=bins, histtype="stepfilled",
                 facecolor=face_rgba, edgecolor=edge_rgba, linewidth=1.5
@@ -1580,11 +1576,11 @@ def _(np):
         delta_b = 2 * eps * (np.random.rand(wai.n - 1) - 0.5)
 
         # enforce constraint
-        if np.random.rand() < 0.0:
-            wai.bs[1:-1] += delta_b
-            wai.bs = np.sort(wai.bs)
-        else:
-            wai.bs[1:-1] += np.sort(delta_b)
+        # if np.random.rand() < 0.0:
+        wai.bs[1:-1] += delta_b
+        wai.bs = np.sort(wai.bs)
+        # else:
+        #     wai.bs[1:-1] += np.sort(delta_b)
 
         wai.bs[wai.bs < 0.0] = 0.0
         wai.bs[wai.bs > wai.w_max] = wai.w_max
@@ -1598,7 +1594,7 @@ def _(WaterAdsorptionIsotherm, mutate, viz_wais):
     _wais = [WaterAdsorptionIsotherm(20)]
     _wais[0].endow_random_isotherm()
     _wais.append(_wais[0].copy())
-    mutate(_wais[1], 0.05)
+    mutate(_wais[1], 0.1)
     viz_wais(_wais, material_labels=["original", "mutated"], savename="mutation")
     return
 
@@ -2047,7 +2043,7 @@ def _(alpha, fitnesses_gen, pd, plt, sns, weather):
             hue="generation", color="C2", palette="crest", legend=False,
             ax=ax, clip_on=False
         )
-        plt.ylabel(f"{alpha:.0f}%-CVaR\n cumulative water delivery\n[kg H$_2$O/kg sorbent]")
+        plt.ylabel(f"{100-alpha:.0f}%-CVaR\n cumulative water delivery\n[kg H$_2$O/kg sorbent]")
         plt.tick_params(axis='x', labelrotation=90)
         # plt.axhline(
         #     y=step_fitnesses[id_opt_step], 
@@ -2473,15 +2469,15 @@ def _(
             period_totals, per_location_var, per_location_cvar, min_cvar = score_fitness(wai, weather)
             print("fitness [kg/kg]: ", min_cvar)
             assert period_totals.max() < max_score
-    
+
             # KDE
             kde = gaussian_kde(period_totals.values)
             density = kde(x_grid)
-    
+
             plt.plot(x_grid, density, color=the_colors[w], lw=3, label=labels[w], clip_on=False)
             # below_var = x_grid < per_location_var["mix"]
             # plt.fill_between(x_grid[below_var], density[below_var], alpha=0.25, color=the_colors[w])
-    
+
             ax.axvline(min_cvar, linestyle="--", color=the_colors[w], clip_on=False)
 
         ax.set_xlabel("cumulative water delivery [kg H$_2$O/kg sorbent]")
