@@ -259,7 +259,7 @@ def _():
         "Socorro": "Chihuahuan",
         "Stovepipe": "Mojave",
         "Riley": "OR High",
-        "Utqiagvik": "AL Polar"
+        "Utqiagvik": "AK Polar"
     }
     return (city_to_desert,)
 
@@ -699,7 +699,7 @@ def _(mo):
 @app.cell(hide_code=True)
 def _(mo):
     dropdown_time = mo.ui.dropdown(
-        options=["summer", "all_yr"], 
+        options=["summer", "all_yr", "winter"], 
         value="summer", label="choose season"
     )
     dropdown_time
@@ -709,6 +709,7 @@ def _(mo):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
+    for summer:
     - Stovepipe: opt step at 7%
     - Yuma: opt step at 12.8%
     - Socorro: opt step at 15%
@@ -763,7 +764,8 @@ def _(Weather, dropdown, dropdown_time, get_weather_datas, mixed_locations):
     season_to_months = {
         "all_yr": list(range(1, 13)),
         "summer": [5, 6, 7, 8, 9],
-        "summer_met": [6, 7, 8] # meterological
+        "summer_met": [6, 7, 8], # meterological
+        "winter": [11, 12, 1, 2]
     }
     yrs = [2019, 2020, 2021, 2022, 2023, 2024, 2025]
 
@@ -793,13 +795,17 @@ def _(os, weather):
 
 
 @app.cell
-def _(weather):
+def _(dropdown_time, weather):
+    print(dropdown_time.value)
     for wmetric in ["ads T [°C]", "des T [°C]", "ads P/P0", "des P/P0"]:
         print(wmetric)
-        print("\tmin = ", weather.ads_des_conditions[wmetric].min())
-        print("\tmax = ", weather.ads_des_conditions[wmetric].max())
-        print("\tmean = ", weather.ads_des_conditions[wmetric].mean())
-        print("\tstd = ", weather.ads_des_conditions[wmetric].std())
+        for _loc, _group in weather.ads_des_conditions.groupby("location"):
+        
+            print("\t" + _loc)
+            # print("\t\tmin = ", _group[wmetric].min())
+            # print("\t\tmax = ", _group[wmetric].max())
+            print("\t\tmean = ", _group[wmetric].mean())
+            print("\t\tstd = ", _group[wmetric].std())
 
     print(
         "mean delta p/p0: ", (
@@ -811,9 +817,40 @@ def _(weather):
 
 
 @app.cell
+def _(weather):
+    weather.ads_des_conditions.groupby("location")["ads T [°C]"].mean().sort_values()
+    return
+
+
+@app.cell
+def _(weather):
+    weather.ads_des_conditions.groupby("location")["des T [°C]"].mean().sort_values()
+    return
+
+
+@app.cell
+def _(weather):
+    weather.ads_des_conditions.groupby("location")["ads P/P0"].mean().sort_values()
+    return
+
+
+@app.cell
+def _(weather):
+    weather.ads_des_conditions.groupby("location")["des P/P0"].mean().sort_values()
+    return
+
+
+@app.cell
+def _(weather):
+    weather.ads_des_conditions
+    return
+
+
+@app.cell
 def _(
     T_range,
     T_ticks,
+    city_to_desert,
     dropdown,
     idea_to_color,
     mixed_locations,
@@ -881,21 +918,26 @@ def _(
         if pp.legend is not None:
             pp.legend.remove()
 
+ 
+        labels = [city_to_desert.get(l, l) + " Desert" for l in pp._legend_data.keys()]
+
         legend_ax.legend(
-            handles, labels, title="location", loc="center", frameon=False
+            handles, labels, title="", loc="center", frameon=False
         )
 
         pp.fig.subplots_adjust(wspace=0.1, hspace=0.1)
         for c in range(4):
             pp.axes[-1, c].xaxis.labelpad = 5
 
-        if weather.tag == "mix":
-            plt.savefig(
-                weather.tag + "/ads_des_conditions.pdf", 
-                format="pdf"
-            )
+        plt.savefig(weather.tag + "/ads_des_conditions.pdf", format="pdf")
         plt.show()
     return set_weather_cols_axis, short_to_proper_weather_cols, weather_cols
+
+
+@app.cell
+def _(weather):
+    weather.tag
+    return
 
 
 @app.cell(hide_code=True)
@@ -2451,7 +2493,7 @@ def _(colors, id_opt_step, mpl, np, plt, step_fitnesses, step_wais, weather):
         plt.ylim(0, w_max)
 
         plt.savefig(
-            weather.tag + "step_search.pdf",
+            weather.tag + "/step_search.pdf",
             format="pdf",  bbox_inches="tight"
         )
 
@@ -2686,16 +2728,37 @@ def _(mo):
 def _(unpickle):
     # bring A -> B
     loc_A = "Stovepipe"
-    season_A = "summer"
+    season_A = "winter"
 
-    loc_B = "Riley"
+    loc_B = "Stovepipe"
     season_B = "summer"
 
-    best_wai_A = unpickle(loc_A + "_summer_opt_isotherm")
+    comparison_case = f"wai_for_{loc_A}_{season_A}_operating_in_{loc_B}_{season_B}"
 
-    best_wai_B = unpickle(loc_B + "_summer_opt_isotherm")
-    weather_B = unpickle(loc_B + "_summer_weather")
-    return best_wai_A, best_wai_B, loc_A, loc_B, weather_B
+    best_wai_A = unpickle(f"{loc_A}_{season_A}_opt_isotherm")
+
+    best_wai_B = unpickle(f"{loc_B}_{season_B}_opt_isotherm")
+    weather_B = unpickle(f"{loc_B}_{season_B}_weather")
+    return (
+        best_wai_A,
+        best_wai_B,
+        comparison_case,
+        loc_A,
+        loc_B,
+        season_A,
+        season_B,
+        weather_B,
+    )
+
+
+@app.cell
+def _(best_wai_A, best_wai_B, loc_A, loc_B, season_A, season_B, viz_wais):
+    viz_wais(
+        [best_wai_A, best_wai_B],
+        material_labels=[f"opt for {season_A} in {loc_A}", f"opt for {season_B} in {loc_B}"], 
+        savename="comparison/both_wais_{comparison_case}"
+    )
+    return
 
 
 @app.cell
@@ -2712,16 +2775,16 @@ def _(viz_cities):
 
 
 @app.cell
-def _(loc_A, loc_B, viz_cities):
+def _(comparison_case, loc_A, loc_B, viz_cities):
     viz_cities(
         [loc_A, loc_B], 
         city_AB=[loc_A, loc_B], 
-        savename=f"comparison/{loc_A}_to_{loc_B}_map",
-        extent=[-127, -110, 30, 50],
+        savename=f"comparison/map_{comparison_case}",
+        extent=[-127, -102, 30, 50],
         xy_shift = {
             "Riley": [3.5, 0],
             "Stovepipe": [-3, 0.0],
-            "Socorro": [0, 3.75],
+            "Socorro": [0, 2.5],
             "Utqiagvik": [0, -3.75],
             "Yuma": [-7.5, 0]
         }
@@ -2732,6 +2795,7 @@ def _(loc_A, loc_B, viz_cities):
 @app.cell
 def _(
     city_to_desert,
+    comparison_case,
     gaussian_kde,
     idea_to_color,
     my_colors,
@@ -2782,7 +2846,7 @@ def _(
         plt.legend()
 
         plt.tight_layout()
-        plt.savefig(f"comparison/{loc_A}_to_{loc_B}_fitness.pdf", format="pdf")
+        plt.savefig(f"comparison/{comparison_case}_fitness.pdf", format="pdf")
         plt.show()
 
     return (viz_mismatch_fitness,)
@@ -2819,12 +2883,12 @@ def _(best_wai_B):
 
 
 @app.cell
-def _(best_wai_A, loc_A, loc_B, viz_water_del, wdel_diff_data, weather_B):
+def _(best_wai_A, comparison_case, viz_water_del, wdel_diff_data, weather_B):
     viz_water_del(
         best_wai_A, weather_B, 
         wdel_diff_data.iloc[0]["date"],
         # boundary_color=idea_to_color[other_tag],
-        savename=f"comparison/failure_{loc_A}_in_{loc_B}"
+        savename=f"comparison/failure_{comparison_case}"
     )
     return
 
