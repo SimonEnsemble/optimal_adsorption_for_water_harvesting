@@ -254,15 +254,26 @@ def _():
 
 
 @app.cell
-def _(ccrs, cfeature, city_to_coords, idea_to_color, plt):
+def _():
+    city_to_desert = {
+        "Socorro": "Chihuahuan",
+        "Stovepipe": "Mojave",
+        "Riley": "OR High",
+        "Utqiagvik": "AL Polar"
+    }
+    return (city_to_desert,)
+
+
+@app.cell
+def _(ccrs, cfeature, city_to_coords, city_to_desert, idea_to_color, plt):
     def viz_cities(
         cities, city_AB=None, savename=None, 
         extent=[-168, -99, 30, 71],
         xy_shift = {
-            "Riley": [6.1, 0],
-            "Stovepipe": [-9.75, 0.0],
-            "Socorro": [0, 3.75],
-            "Utqiagvik": [0, -3.75],
+            "Riley": [0, 5.5],
+            "Stovepipe": [-7.75, 0.0],
+            "Socorro": [0, 5.5],
+            "Utqiagvik": [0, -5.5],
             "Yuma": [-7.5, 0]
         }
     ):
@@ -283,12 +294,15 @@ def _(ccrs, cfeature, city_to_coords, idea_to_color, plt):
         for city in cities:
             lon = city_to_coords[city][0]
             lat = city_to_coords[city][1]
-            ax.plot(lon, lat, marker="*", markersize=15, color=idea_to_color[city],
-                    transform=ccrs.PlateCarree()
+            ax.plot(
+                lon, lat, marker="*", markersize=15, color=idea_to_color[city],
+                transform=ccrs.PlateCarree()
             )
-            ax.text(lon + xy_shift[city][0], lat + xy_shift[city][1], city, fontsize=14, ha="center", va="center",
-                    transform=ccrs.PlateCarree(), 
-                    bbox=dict(facecolor="white", alpha=0.7, edgecolor="none", boxstyle="round,pad=0.2")
+            ax.text(
+                lon + xy_shift[city][0], lat + xy_shift[city][1], city_to_desert[city] + "\nDesert", 
+                fontsize=14, ha="center", va="center",
+                transform=ccrs.PlateCarree(), 
+                bbox=dict(facecolor="white", alpha=0.7, edgecolor="none", boxstyle="round,pad=0.2")
             )
 
         if city_AB:
@@ -2566,6 +2580,7 @@ def _(mixed_locations, unpickle):
 
 @app.cell
 def _(
+    city_to_desert,
     gaussian_kde,
     idea_to_color,
     n_day_period,
@@ -2592,7 +2607,7 @@ def _(
             kde = gaussian_kde(period_totals.values)
             density = kde(x_grid)
 
-            plt.plot(x_grid, density, color=color, lw=3, label=loc)
+            plt.plot(x_grid, density, color=color, lw=3, label=city_to_desert[loc])
 
             below_var = x_grid < per_location_var[loc]
             plt.fill_between(x_grid[below_var], density[below_var], alpha=0.05, color=color)
@@ -2605,7 +2620,7 @@ def _(
         ax.set_xlim([0.0, max_score])
         ax.set_ylim(ymin=0.0)
 
-        plt.legend()
+        plt.legend(title="Desert")
         plt.tight_layout()
         plt.savefig("comparison/compare_fitnesses.pdf", format="pdf")
         plt.show()
@@ -2620,7 +2635,7 @@ def _(best_wais, compare_all_wai_fitness, weathers):
 
 
 @app.cell
-def _(idea_to_color, np, p_ovr_p0_ticks, plt):
+def _(city_to_desert, idea_to_color, np, p_ovr_p0_ticks, plt):
     def compare_best_wais(wais, weathers):
         p_over_p0s = np.linspace(0, 1.0, 100)
 
@@ -2637,14 +2652,14 @@ def _(idea_to_color, np, p_ovr_p0_ticks, plt):
                 p_over_p0s, 
                 [wai.water_ads(wai.Tref, p_over_p0) for p_over_p0 in p_over_p0s],
                 color=idea_to_color[loc],
-                label=loc,
+                label=city_to_desert[loc],
                 lw=3,
                 clip_on=False
             )
 
         plt.xlim(0, 1.0)
         plt.ylim(0, wais[0].w_max)
-        plt.legend(title="location")
+        plt.legend(title="Desert")
         plt.savefig(
             "comparison/best_wai_comparison.pdf", format="pdf", bbox_inches="tight"
         )
@@ -2690,11 +2705,7 @@ def _(viz_cities):
         savename=f"map_Riley",
         extent=[-127, -110, 30, 50],
         xy_shift = {
-            "Riley": [2.5, 0],
-            "Stovepipe": [-3.75, 0.0],
-            "Socorro": [0, 3.75],
-            "Utqiagvik": [0, -3.75],
-            "Yuma": [-7.5, 0]
+            "Riley": [3.5, 0]
         }
     )
     return
@@ -2708,8 +2719,8 @@ def _(loc_A, loc_B, viz_cities):
         savename=f"comparison/{loc_A}_to_{loc_B}_map",
         extent=[-127, -110, 30, 50],
         xy_shift = {
-            "Riley": [2.5, 0],
-            "Stovepipe": [-3.75, 0.0],
+            "Riley": [3.5, 0],
+            "Stovepipe": [-3, 0.0],
             "Socorro": [0, 3.75],
             "Utqiagvik": [0, -3.75],
             "Yuma": [-7.5, 0]
@@ -2720,6 +2731,7 @@ def _(loc_A, loc_B, viz_cities):
 
 @app.cell
 def _(
+    city_to_desert,
     gaussian_kde,
     idea_to_color,
     my_colors,
@@ -2749,7 +2761,7 @@ def _(
         density = kde(x_grid)
 
         # label = f"opt sorbent for {loc_A} in {loc_B}"
-        plt.plot(x_grid, density, color=color, lw=3, label=loc_B)
+        plt.plot(x_grid, density, color=color, lw=3, label=city_to_desert[loc_B] + " Desert")
 
         below_var = x_grid < per_location_var[loc_B]
         plt.fill_between(x_grid[below_var], density[below_var], alpha=0.25, color=color)
@@ -2826,7 +2838,7 @@ def _(mo):
 
 
 @app.cell
-def _(idea_to_color, np, pd, plt):
+def _(city_to_desert, idea_to_color, np, pd, plt):
     class ExptIsotherm:
         def __init__(self, name, T):
             self.name = name
@@ -2852,7 +2864,7 @@ def _(idea_to_color, np, pd, plt):
                 color = idea_to_color[loc]
                 p_ovr_p0s = np.linspace(0, 1, 100)
                 ws = wai.water_ads(self.T, p_ovr_p0s)
-                plt.plot(p_ovr_p0s, ws, label=f"{wai.label} for {loc}", lw=3, color=color)
+                plt.plot(p_ovr_p0s, ws, label=f"optimal for\n{city_to_desert[loc]} Desert", lw=3, color=color)
 
             plt.legend()
             plt.xlim([0, 1])
