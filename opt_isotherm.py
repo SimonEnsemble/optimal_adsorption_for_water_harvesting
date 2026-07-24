@@ -1,6 +1,6 @@
 import marimo
 
-__generated_with = "0.23.14"
+__generated_with = "0.17.6"
 app = marimo.App(width="medium")
 
 
@@ -325,7 +325,6 @@ def _(ccrs, cfeature, city_to_coords, city_to_desert, idea_to_color, plt):
         if savename:
             plt.savefig(savename + ".pdf", format="pdf", bbox_inches="tight", pad_inches=0)
         plt.show()
-
     return (viz_cities,)
 
 
@@ -605,7 +604,6 @@ def _(T_range, idea_to_color, np, os, pd, plt):
         def all_consecutive_days(self):
             gaps = self.ads_des_conditions["date"].diff().dropna()
             return (gaps == pd.Timedelta(days=1)).all()
-
     return (WeatherData,)
 
 
@@ -670,7 +668,6 @@ def _(T_range, pd):
             if T_min < T_range[0] or T_max > T_range[1]:
                 print([T_min, T_max])
                 raise Exception("extend T_range")
-
     return (Weather,)
 
 
@@ -755,7 +752,6 @@ def _(WeatherData, np, too_many_missing):
                         n_avoid += 1
         print(f"left out: {n_avoid}/{n_tot}")
         return weather_datas
-
     return (get_weather_datas,)
 
 
@@ -800,7 +796,7 @@ def _(dropdown_time, weather):
     for wmetric in ["ads T [°C]", "des T [°C]", "ads P/P0", "des P/P0"]:
         print(wmetric)
         for _loc, _group in weather.ads_des_conditions.groupby("location"):
-        
+
             print("\t" + _loc)
             # print("\t\tmin = ", _group[wmetric].min())
             # print("\t\tmax = ", _group[wmetric].max())
@@ -918,7 +914,7 @@ def _(
         if pp.legend is not None:
             pp.legend.remove()
 
- 
+
         labels = [city_to_desert.get(l, l) + " Desert" for l in pp._legend_data.keys()]
 
         legend_ax.legend(
@@ -984,7 +980,6 @@ def _(comb, np):
             basis = self.basis_matrix(x)       # (m, n+1)
             val = basis @ np.asarray(bs)       # (m,)
             return val[0] if scalar_input else val
-
     return (BernPolyBasis,)
 
 
@@ -1169,7 +1164,6 @@ def _(BernPolyBasis, colors, inset_axes, np, plt, temp_colormap, w_max):
                 plt.savefig(savename + ".pdf", format="pdf")
 
             plt.show()
-
     return (WaterAdsorptionIsotherm,)
 
 
@@ -1239,7 +1233,6 @@ def _(n_day_period, np, pd):
         ).set_index(["location", "period_label"])["cum water del [kg/kg]"]
 
         return totals
-
     return (get_nday_totals,)
 
 
@@ -1256,7 +1249,6 @@ def _(np):
         val_at_risk = np.percentile(scores, alpha)
         cval_at_risk = np.mean(scores[scores <= val_at_risk])
         return val_at_risk, cval_at_risk
-
     return (var_cvar,)
 
 
@@ -1281,7 +1273,6 @@ def _(alpha, get_nday_totals, n_day_period, var_cvar):
             print("min CVaR: ", min_cvar)
 
         return period_totals, per_location_var, per_location_cvar, min_cvar
-
     return (score_fitness,)
 
 
@@ -1348,7 +1339,6 @@ def _(
 
         plt.savefig(weather.tag + "/best_wai_water_del_distn.pdf", format="pdf")
         plt.show()
-
     return (draw_fitness_scores,)
 
 
@@ -1520,7 +1510,6 @@ def _(
             ax_top.axvline(fitness, linestyle="--", color=the_colors[w])
 
         plt.show()
-
     return (compare_wais,)
 
 
@@ -1591,7 +1580,6 @@ def _(my_colors, np, p_ovr_p0_ticks, plt):
                 savename + ".pdf", format="pdf",  bbox_inches="tight"
             )
         plt.show()
-
     return (viz_wais,)
 
 
@@ -1612,7 +1600,6 @@ def _(WaterAdsorptionIsotherm, np):
         else:
             wai.endow_random_isotherm()
         return wai
-
     return (random_birth,)
 
 
@@ -1648,7 +1635,6 @@ def _(np):
         wai.bs[wai.bs < 0.0] = 0.0
         wai.bs[wai.bs > wai.w_max] = wai.w_max
         wai.bs[-1] = wai.w_max
-
     return (mutate,)
 
 
@@ -1682,7 +1668,6 @@ def _(np):
         id_a = ids_tourney[ids_winners[0]]
         id_b = ids_tourney[ids_winners[1]]
         return id_a, id_b
-
     return (run_tournament,)
 
 
@@ -1708,7 +1693,6 @@ def _(WaterAdsorptionIsotherm, np):
         return WaterAdsorptionIsotherm(
             wai_a.n, bs=alpha * wai_a.bs + (1 - alpha) * wai_b.bs
         )
-
     return (random_combination,)
 
 
@@ -1752,7 +1736,6 @@ def _(np):
         wai.bs = np.sort(wai.bs)
 
         return wai
-
     return (random_cross_over,)
 
 
@@ -1829,7 +1812,6 @@ def _(score_fitness):
                 fitness = new_fitness
             else:
                 break 
-
     return (ls_stepify,)
 
 
@@ -1934,7 +1916,6 @@ def _(
             mutate(new_wais[id], eps)
 
         return new_wais
-
     return (evolve,)
 
 
@@ -1942,7 +1923,6 @@ def _(
 def _(random_birth):
     def gen_initial_pop(pop_size, n):
         return [random_birth(n) for _ in range(pop_size)]
-
     return (gen_initial_pop,)
 
 
@@ -2014,7 +1994,6 @@ def _(evolve, gen_initial_pop, ls_stepify, np, score_fitness):
         best_period_totals, _, _, best_fitness = score_fitness(best_wai, weather, verbose=True)
 
         return fitnesses_gen, best_wai_gen, best_wai, best_period_totals, best_fitness
-
     return (do_evolution,)
 
 
@@ -2073,7 +2052,7 @@ def _(best_wai, viz_monthly_water_del, weather):
         # boundary_color=None if dropdown.value == "mix" else idea_to_color[dropdown.value],
         savename=weather.tag + f"/best_wai_fitness",
         legend_outside=False,
-        cvar_legend_loc="upper left", loc_legend_loc="upper right", incl_cvar_legend=True
+        cvar_legend_loc="lower center", loc_legend_loc="lower right", incl_cvar_legend=True
     )
     return
 
@@ -2202,7 +2181,6 @@ def _(pickle):
         with open(pf_name, 'wb') as pf:
             pickle.dump(var, pf)
             print("saved in: ", pf_name)
-
     return (pickle_this,)
 
 
@@ -2224,27 +2202,31 @@ def _(mo):
 
 @app.cell
 def _(
+    best_wai,
     plt,
-    score_fitness,
     set_weather_cols_axis,
     short_to_proper_weather_cols,
     sns,
+    weather,
     weather_cols,
 ):
     def viz_daily_performance(best_wai, weather):
-        scores, fitness = score_fitness(best_wai, weather)
-
+        attach_water_delivery(best_wai, weather)
         performance_data = weather.ads_des_conditions.copy()
+        performance_data = performance_data.rename(
+            columns={"water del [kg H$_2$O/kg MOF]": "water delivery\n[kg H$_2$O/kg MOF]"}
+        )
+        performance_data = performance_data.sample(frac=1, random_state=42).reset_index(drop=True) # shuffle
 
-        cols_to_plot = weather_cols + ["water delivery [kg H$_2$O/kg MOF]"]
+        cols_to_plot = weather_cols + ["water delivery\n[kg H$_2$O/kg MOF]"]
 
         # Initialize the grid
         pp = sns.PairGrid(
             performance_data.rename(
                 columns=short_to_proper_weather_cols
             ),
-            vars=[short_to_proper_weather_cols[w] for w in weather_cols] + ["water del [kg H$_2$O/kg MOF]"],
-            hue="water del [kg H$_2$O/kg MOF]", 
+            vars=[short_to_proper_weather_cols[w] for w in weather_cols] + ["water delivery\n[kg H$_2$O/kg MOF]"],
+            hue="water delivery\n[kg H$_2$O/kg MOF]", 
             corner=True
         )
 
@@ -2268,13 +2250,13 @@ def _(
             pp.axes[i, i].set_visible(False)
 
         plt.savefig(
-            weather.tag + "daily_performance.pdf", format="pdf",
+            weather.tag + "/daily_performance.pdf", format="pdf",
             bbox_inches="tight"
         )
 
         plt.show()
 
-    # viz_daily_performance(best_wai, weather)
+    viz_daily_performance(best_wai, weather)
     return
 
 
@@ -2365,7 +2347,6 @@ def _(T_range, colors, np, p_ovr_p0_ticks, plt, temp_colormap):
                 savename + ".pdf", format="pdf", bbox_inches="tight"
             )
         plt.show()
-
     return (viz_water_del,)
 
 
@@ -2553,7 +2534,6 @@ def _(
 
         plt.savefig(weather.tag + "/comparison_w_step.pdf", format="pdf")
         plt.show()
-
     return (compare_best_wai_and_best_wai_step,)
 
 
@@ -2603,7 +2583,6 @@ def _(pickle):
         with open(pf_name, 'rb') as pf:
             var = pickle.load(pf)
         return var
-
     return (unpickle,)
 
 
@@ -2666,7 +2645,6 @@ def _(
         plt.tight_layout()
         plt.savefig("comparison/compare_fitnesses.pdf", format="pdf")
         plt.show()
-
     return (compare_all_wai_fitness,)
 
 
@@ -2706,7 +2684,6 @@ def _(city_to_desert, idea_to_color, np, p_ovr_p0_ticks, plt):
             "comparison/best_wai_comparison.pdf", format="pdf", bbox_inches="tight"
         )
         plt.show()
-
     return (compare_best_wais,)
 
 
@@ -2848,7 +2825,6 @@ def _(
         plt.tight_layout()
         plt.savefig(f"comparison/{comparison_case}_fitness.pdf", format="pdf")
         plt.show()
-
     return (viz_mismatch_fitness,)
 
 
@@ -2939,7 +2915,6 @@ def _(city_to_desert, idea_to_color, np, pd, plt):
                 plt.savefig(savename + ".pdf", format="pdf", bbox_inches="tight")
 
             plt.show()
-
     return (ExptIsotherm,)
 
 
