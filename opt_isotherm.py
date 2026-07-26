@@ -3110,7 +3110,8 @@ def _(expt_isotherms, loss, wai):
 
 @app.cell
 def _(expt_isotherms):
-    _mofs = ["MOF-801", "Al-Fum"]
+    _mofs = ["MOF-801", "Al-Fum", "KMF-1"]
+    # _mofs = [mof for mof, T in data_I_got if T == 25]
     mofs_to_mix = [expt_isotherms[mof] for mof in _mofs]
     return (mofs_to_mix,)
 
@@ -3149,8 +3150,8 @@ def _(loss, minimize, np):
 
 
 @app.cell
-def _(do_shape_matching, mofs_to_mix, wai):
-    x_opt = do_shape_matching(wai, mofs_to_mix)
+def _(do_shape_matching, mofs_to_mix, unpickle):
+    x_opt = do_shape_matching(unpickle("Stovepipe_winter_opt_isotherm"), mofs_to_mix)
     return (x_opt,)
 
 
@@ -3217,6 +3218,41 @@ def _(draw_mixed_shape_match, mofs_to_mix, unpickle, x_opt):
         season="Dec-Feb",
         savename="Stovepipe_winter/shape_match"
     )
+    return
+
+
+@app.cell
+def _(data_I_got, expt_isotherms, plt, sns):
+    def draw_mof_ads_data(expt_isotherms):
+        T = expt_isotherms[0].T
+
+        fig, ax = plt.subplots()
+
+        plt.xlabel("relative humidity, $p / [p_0(T)]$")
+        plt.ylabel(f"water adsorption at {T}°C\n[kg H$_2$O/kg MOF]")
+    
+        markers = ['o', 's', '^', 'D', 'x', '*']
+        colors = sns.color_palette("pastel", len(expt_isotherms))
+        for i, expt_isotherm in enumerate(expt_isotherms):
+            label = f"{expt_isotherm.name}"
+            ax.scatter(
+                expt_isotherm.data["RH[%]"] / 100.0, expt_isotherm.data["Water Uptake [kg kg-1]"],
+                label=label, color=colors[i], s=40, zorder=10, marker=markers[i]
+            )
+
+        plt.xlim([0, 1])
+        plt.ylim(ymin=0)
+
+        plt.legend(loc="lower right")# , bbox_to_anchor=(1.02, 1))
+        plt.tight_layout()
+
+        plt.savefig("expt_isotherms.pdf", format="pdf", bbox_inches="tight")
+
+        plt.show()
+
+    _expt_isotherms = [expt_isotherms[mof] for mof, T in data_I_got if T == 25]
+    _expt_isotherms = [expt_isotherms[mof] for mof in ["MOF-801", "Al-Fum", "KMF-1", "CAU-23"]]
+    draw_mof_ads_data(_expt_isotherms)
     return
 
 
