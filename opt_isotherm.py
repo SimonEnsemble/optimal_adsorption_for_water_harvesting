@@ -9,6 +9,7 @@ def _():
     import marimo as mo
     import pandas as pd
     import math
+    from scipy.stats import norm
     import numpy as np
     import os
     import datetime
@@ -64,6 +65,7 @@ def _():
         minimize,
         mo,
         mpl,
+        norm,
         np,
         os,
         pd,
@@ -3323,8 +3325,55 @@ def _(expt_isotherms, mof_to_color, mof_to_marker, np, plt):
     return
 
 
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    # toy CVaR plot
+    """)
+    return
+
+
 @app.cell
-def _():
+def _(norm, np, plt):
+    def viz_cVar():
+        mu, sigma = 0.5, 1.5      # convention: positive values = losses
+        alpha = 0.8
+    
+        z = norm.ppf(alpha)                              # standard-normal quantile
+        var = mu - sigma * z                             # VaR: the cut point
+        cvar = mu - sigma * norm.pdf(z) / (1 - alpha)    # CVaR: mean beyond the cut
+    
+        x = np.linspace(mu - 4 * sigma, mu + 4 * sigma, 500)
+        pdf = norm.pdf(x, mu, sigma)
+    
+        fig, ax = plt.subplots(figsize=(4.5, 3.5))
+        ax.plot(x, pdf, color="black", lw=1.8)
+    
+        # shade the worst (1-alpha) of the distribution
+        tail = x <= var
+        ax.fill_between(x[tail], pdf[tail], color="crimson", alpha=0.35,
+                        label=f"worst {1 - alpha:.0%}")
+    
+        ax.axvline(var, color="gray", ls="--", lw=1.5, label=f"{100*alpha:.0f}%-VaR")
+        ax.axvline(cvar, color="crimson", lw=2, label=f"{100*alpha:.0f}%-CVaR")
+    
+        ax.set_xlabel("water delivery [kg H$_2$O/kg sorbent]", labelpad=10)
+        ax.set_ylabel("# scenarios")
+        ax.set_ylim(bottom=0)
+        ax.set_xticks([])
+        ax.set_yticks([0])
+        ax.legend(frameon=False, fontsize=13, loc=(0.625, 0.65))
+        # plt.tight_layout()
+        plt.savefig("cvar.pdf", format="pdf", bbox_inches="tight")
+        plt.show()
+
+    viz_cVar()
+    return
+
+
+@app.cell
+def _(x):
+    x
     return
 
 
