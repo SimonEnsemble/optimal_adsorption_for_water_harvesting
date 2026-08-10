@@ -822,26 +822,70 @@ def _(city_to_desert, dropdown_time, weather):
 
 
 @app.cell
-def _(weather):
-    weather.ads_des_conditions.groupby("location")["ads T [°C]"].mean().sort_values()
+def _(T_range, idea_to_color, np, plt, weather):
+    def draw_avgs(temp_or_humid):
+        if temp_or_humid == "temperature [°C]":
+            cols = ["ads T [°C]", "des T [°C]"]
+        elif temp_or_humid == "RH":
+            cols = ["ads P/P0", "des P/P0"]
+    
+        avg_weather = weather.ads_des_conditions.groupby("location")[
+            cols
+        ].mean().reset_index()
+        avg_weather = avg_weather.rename(
+            columns={"ads T [°C]": "capture", "des T [°C]": "release", "des P/P0": "release", "ads P/P0": "capture"}
+        )
+
+        n_cities = avg_weather.shape[0]
+    
+        fig, ax = plt.subplots(figsize=(4, 1.5))
+    
+        ax.set_yticks([0, 1])
+        ax.set_ylim([-0.5, 1.5])
+        ax.set_yticklabels(["capture", "release"])
+        ax.yaxis.set_minor_locator(plt.NullLocator())
+
+        colors = [idea_to_color[city] for city in avg_weather["location"]]
+    
+        plt.scatter(avg_weather["capture"], np.zeros(n_cities), clip_on=False, s=60, color=colors)
+        plt.scatter(avg_weather["release"], np.ones(n_cities), clip_on=False, s=60, color=colors)
+
+        ax.set_xlabel(temp_or_humid)
+    
+        if temp_or_humid == "temperature [°C]":
+            ax.set_xlim(T_range)
+        else:
+            ax.set_xlim([0, 1])
+    
+        for _, row in avg_weather.iterrows():
+            ax.plot([row["capture"], row["release"]], [0, 1], color="gray", linewidth=1, zorder=0)
+
+        plt.savefig(f"avg_weather_{temp_or_humid.split()[0]}.pdf", format="pdf", bbox_inches="tight")
+        plt.show()
+
+    return (draw_avgs,)
+
+
+@app.cell
+def _(draw_avgs, dropdown):
+    if dropdown.value == "mix":
+        draw_avgs("temperature [°C]")
+    return
+
+
+@app.cell
+def _(draw_avgs, dropdown):
+    if dropdown.value == "mix":
+        draw_avgs("RH")
     return
 
 
 @app.cell
 def _(weather):
-    weather.ads_des_conditions.groupby("location")["des T [°C]"].mean().sort_values()
-    return
-
-
-@app.cell
-def _(weather):
-    weather.ads_des_conditions.groupby("location")["ads P/P0"].mean().sort_values()
-    return
-
-
-@app.cell
-def _(weather):
-    weather.ads_des_conditions.groupby("location")["des P/P0"].mean().sort_values()
+    avg_conditions = weather.ads_des_conditions.groupby("location")[
+        ["ads T [°C]", "des T [°C]", "ads P/P0", "des P/P0"]
+    ].mean().reset_index()
+    avg_conditions
     return
 
 
@@ -3119,7 +3163,7 @@ def _(np):
     def loss(x, wai, expt_isotherms):
         T = expt_isotherms[0].T
 
-        p_ovr_p0s = np.linspace(0, 0.9, 35)
+        p_ovr_p0s = np.linspace(0, 1.0, 35)
 
         n_mix = np.sum(
             x[i] * expt_isotherm.water_ads(p_ovr_p0s) for i, expt_isotherm in enumerate(expt_isotherms)
@@ -3334,7 +3378,7 @@ def _(mo):
 
 
 @app.cell
-def _(norm, np, plt):
+def _(mof_to_color, norm, np, plt):
     def viz_cVar():
         mu, sigma = 0.5, 1.5      # convention: positive values = losses
         alpha = 0.8
@@ -3348,21 +3392,23 @@ def _(norm, np, plt):
     
         fig, ax = plt.subplots(figsize=(4.5, 3.5))
         ax.plot(x, pdf, color="black", lw=1.8)
+
+        color = mof_to_color["MOF-303"]
     
         # shade the worst (1-alpha) of the distribution
         tail = x <= var
-        ax.fill_between(x[tail], pdf[tail], color="crimson", alpha=0.35,
+        ax.fill_between(x[tail], pdf[tail], color=color, alpha=0.35,
                         label=f"worst {1 - alpha:.0%}")
     
         ax.axvline(var, color="gray", ls="--", lw=1.5, label=f"{100*alpha:.0f}%-VaR")
-        ax.axvline(cvar, color="crimson", lw=2, label=f"{100*alpha:.0f}%-CVaR")
+        ax.axvline(cvar, color=mof_to_color["CAU-10-H"], lw=2, label=f"{100*alpha:.0f}%-CVaR")
     
         ax.set_xlabel("water delivery [kg H$_2$O/kg sorbent]", labelpad=10)
         ax.set_ylabel("# scenarios")
         ax.set_ylim(bottom=0)
         ax.set_xticks([])
         ax.set_yticks([0])
-        ax.legend(frameon=False, fontsize=13, loc=(0.625, 0.65))
+        # ax.legend(frameon=False, fontsize=13, loc=(0.625, 0.65))
         # plt.tight_layout()
         plt.savefig("cvar.pdf", format="pdf", bbox_inches="tight")
         plt.show()
@@ -3372,8 +3418,7 @@ def _(norm, np, plt):
 
 
 @app.cell
-def _(x):
-    x
+def _():
     return
 
 
