@@ -14,6 +14,7 @@ def _():
     import datetime
     import random
     import calendar
+    from itertools import combinations
     import warnings
     from scipy.special import comb
     from scipy.stats import gaussian_kde
@@ -54,6 +55,7 @@ def _():
         cfeature,
         colors,
         comb,
+        combinations,
         datetime,
         figsize,
         gaussian_kde,
@@ -333,8 +335,8 @@ def _(ccrs, cfeature, city_to_coords, city_to_desert, idea_to_color, plt):
 
 
 @app.cell
-def _(mixed_locations, viz_cities):
-    viz_cities(mixed_locations, savename="map_all")
+def _():
+    # viz_cities(mixed_locations, savename="map_all")
     return
 
 
@@ -632,8 +634,8 @@ def _(WeatherData):
 
 
 @app.cell
-def _(wdata):
-    wdata.viz_timeseries(savename="weather_timeseries_" + wdata.location)
+def _():
+    # wdata.viz_timeseries(savename="weather_timeseries_" + wdata.location)
     return
 
 
@@ -809,7 +811,7 @@ def _(city_to_desert, dropdown_time, weather):
             # print("\t\tmax = ", _group[wmetric].max())
             print("\t\tmean = ", _group[wmetric].mean())
             print("\t\tstd = ", _group[wmetric].std())
-        
+
     for _loc, _group in weather.ads_des_conditions.groupby("location"):
         print(city_to_desert[_loc])
         print("\tmean delta p/p0: ", (_group["ads P/P0"] - _group["des P/P0"]).mean())
@@ -2993,10 +2995,10 @@ def _(np, pd):
             print(filename)
             url = f"https://github.com/SimonEnsemble/water_harvesting/raw/refs/heads/main/new/data/{filename}"
             self.data = pd.read_csv(url)
-        
+
             if self.data["RH[%]"].max() <= 1:
                 self.data["RH[%]"] = self.data["RH[%]"] * 100
-            
+
             self.data = self.data.sort_values("RH[%]")
 
         def water_ads(self, p_ovr_p0):
@@ -3014,32 +3016,41 @@ def _(np, pd):
 
 @app.cell
 def _():
-    data_I_got = [
+    mof_T_pairs = [
         ["MOF-801", 25],
         ["KMF-1", 25],
         ["CAU-23", 25],
-        ["MIL-160", 20],
+        # ["MIL-160", 20],
         ["MOF-303", 25],
         ["CAU-10-H", 25],
         ["Al-Fum", 25],
-        ["MIP-200", 30]
+        # ["MIP-200", 30]
     ]
-    return (data_I_got,)
+    return (mof_T_pairs,)
 
 
 @app.cell
-def _(ExptIsotherm, data_I_got):
+def _(mof_T_pairs, sns):
+    mof_to_marker = dict(zip([x[0] for x in mof_T_pairs], ['o', 's', '^', 'D', 'x', '*']))
+    mof_to_color = dict(zip([x[0] for x in mof_T_pairs], sns.color_palette("pastel", 6)))
+    return mof_to_color, mof_to_marker
+
+
+@app.cell
+def _(ExptIsotherm, mof_T_pairs):
     expt_isotherms = {
-        mof: ExptIsotherm(mof, T) for mof, T in data_I_got
+        mof: ExptIsotherm(mof, T) for mof, T in mof_T_pairs
     }
+
+    assert all([expt_isotherm.T == 25 for expt_isotherm in expt_isotherms.values()])
     return (expt_isotherms,)
 
 
 @app.cell
-def _(city_to_desert, idea_to_color, np, plt):
+def _(city_to_desert, idea_to_color, mof_to_color, np, plt):
     def draw_shape_match(wai, expt_isotherm, savename=None, loc=None, season=""):
         T = expt_isotherm.T
-    
+
         fig, ax = plt.subplots()
 
         plt.xlabel("relative humidity, $p / [p_0(T)]$")
@@ -3054,10 +3065,10 @@ def _(city_to_desert, idea_to_color, np, plt):
         # exp'tl isotherm
         ax.scatter(
             expt_isotherm.data["RH[%]"] / 100.0, expt_isotherm.data["Water Uptake [kg kg-1]"],
-            label=f"{expt_isotherm.name}", color="black", s=40, zorder=10
+            label=f"{expt_isotherm.name}", color=mof_to_color[expt_isotherm.name], s=40, zorder=10
         )
         p_ovr_p0s = np.linspace(0, expt_isotherm.data["RH[%]"].max()/100, 250)
-        ax.plot(p_ovr_p0s, expt_isotherm.water_ads(p_ovr_p0s), color="black", lw=3, zorder=10)
+        ax.plot(p_ovr_p0s, expt_isotherm.water_ads(p_ovr_p0s), color=mof_to_color[expt_isotherm.name], lw=3, zorder=10)
 
         plt.xlim([0, 1])
         plt.ylim(ymin=0)
@@ -3070,6 +3081,23 @@ def _(city_to_desert, idea_to_color, np, plt):
         plt.show()
 
     return (draw_shape_match,)
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    find best shape-match for Riley in summer.
+    """)
+    return
+
+
+@app.cell
+def _(expt_isotherms, loss, mof_T_pairs, unpickle):
+    _target_wai = unpickle("Riley_summer_opt_isotherm")
+    for _mof, _ in mof_T_pairs:
+        _expt_isotherm = expt_isotherms[_mof]
+        print(f"{_mof} loss: ", loss([1], _target_wai, [_expt_isotherm]))
+    return
 
 
 @app.cell
@@ -3088,13 +3116,13 @@ def _(draw_shape_match, expt_isotherms, unpickle):
 def _(np):
     def loss(x, wai, expt_isotherms):
         T = expt_isotherms[0].T
-    
+
         p_ovr_p0s = np.linspace(0, 0.9, 35)
-    
+
         n_mix = np.sum(
             x[i] * expt_isotherm.water_ads(p_ovr_p0s) for i, expt_isotherm in enumerate(expt_isotherms)
         )
-    
+
         n_target = wai.water_ads(T, p_ovr_p0s)
 
         return np.sum((n_mix - n_target) ** 2)
@@ -3103,33 +3131,34 @@ def _(np):
 
 
 @app.cell
-def _(expt_isotherms, loss, wai):
-    loss([0.2, 0.8], wai, [expt_isotherms["KMF-1"], expt_isotherms["MOF-801"]])
+def _(expt_isotherms):
+    expt_isotherms.keys()
     return
 
 
 @app.cell
 def _(expt_isotherms):
-    _mofs = ["MOF-801", "Al-Fum", "KMF-1"]
+    _mofs = ["MOF-801", "Al-Fum", "KMF-1", "CAU-23", "MOF-303", "CAU-10-H"]
+
     # _mofs = [mof for mof, T in data_I_got if T == 25]
     mofs_to_mix = [expt_isotherms[mof] for mof in _mofs]
     return (mofs_to_mix,)
 
 
 @app.cell
-def _(loss, minimize, np):
+def _(combinations, loss, minimize, np):
     def do_shape_matching(wai, expt_isotherms):
         n = len(expt_isotherms)
 
         # initial guess: uniform weights
         x0 = np.ones(n) / n
-    
+
         # bounds: each x_i in [0, 1]
         bounds = [(0, 1) for _ in range(n)]
-    
+
         # constraint: sum(x) == 1
         constraints = {"type": "eq", "fun": lambda x: np.sum(x) - 1}
-    
+
         result = minimize(
             loss,
             x0,
@@ -3138,36 +3167,70 @@ def _(loss, minimize, np):
             bounds=bounds,
             constraints=constraints,
         )
-    
-        x_opt = result.x
+        return result
 
-        for i, expt_isotherm in enumerate(expt_isotherms):
-            print(f"{expt_isotherm.name}: {x_opt[i]}")
+    def do_shape_matching_sparse(wai, expt_isotherms, max_nonzero=3):
+        n = len(expt_isotherms)
+        mofs = list(expt_isotherms.keys())
 
-        return x_opt
+        # candidate supports: all subsets of size 1..max_nonzero
+        mof_ids_options = [
+            idx
+            for k in range(1, max_nonzero + 1)
+            for idx in combinations(range(n), k)
+        ]
+        print("# combos: ", len(mof_ids_options))
 
-    return (do_shape_matching,)
+        fits = []
+        for mof_ids in mof_ids_options:
+            mof_subset = [mofs[i] for i in mof_ids]
+            expt_isotherms_subset = [expt_isotherms[mof] for mof in mof_subset]
+            result = do_shape_matching(wai, expt_isotherms_subset)
+            if not result.success:
+                print("NOT SUCCESS")
+                continue
+            x_opt = dict(zip(mof_subset, result.x))
+            fits.append((result.fun, x_opt))
+
+        fits.sort(key=lambda t: t[0])
+
+        # top candidates
+        print("top 5:")
+        for f, x_opt in fits[:5]:
+            print(f"loss={f:.6g}  [{x_opt.keys()}]")
+
+        f_opt, x_opt = fits[0]
+        print("\nbest fit:")
+        for mof in x_opt.keys():
+            print(f"  {mof}: {x_opt[mof]:.4f}")
+
+        return fits[0][1]
+
+    return do_shape_matching, do_shape_matching_sparse
 
 
 @app.cell
 def _(do_shape_matching, mofs_to_mix, unpickle):
-    x_opt = do_shape_matching(unpickle("Stovepipe_winter_opt_isotherm"), mofs_to_mix)
+    do_shape_matching(unpickle("Stovepipe_winter_opt_isotherm"), mofs_to_mix)
+    return
+
+
+@app.cell
+def _(do_shape_matching_sparse, expt_isotherms, wai):
+    x_opt = do_shape_matching_sparse(wai, expt_isotherms)
     return (x_opt,)
 
 
 @app.cell
 def _(city_to_desert, idea_to_color, np, plt):
-    def draw_mixed_shape_match(wai, expt_isotherms, x, savename=None, loc=None, season=None):
-        T = expt_isotherms[0].T
-        for expt_isotherm in expt_isotherms:
-            assert np.isclose(expt_isotherm.T, T)
+    def draw_mixed_shape_match(wai, expt_isotherms, x_opt, savename=None, loc=None, season=None):
+        p_ovr_p0_max = np.min([expt_isotherm.data["RH[%]"].max()/100 for expt_isotherm in expt_isotherms.values()])
+        T = 25.0
 
-        p_ovr_p0_max = np.min([expt_isotherm.data["RH[%]"].max()/100 for expt_isotherm in expt_isotherms])
-    
         fig, ax = plt.subplots()
 
         plt.xlabel("relative humidity, $p / [p_0(T)]$")
-        plt.ylabel(f"water adsorption at {T}°C\n[kg H$_2$O/kg MOF]")
+        plt.ylabel(f"water adsorption at 25°C\n[kg H$_2$O/kg MOF]")
 
         # target WAI
         color = idea_to_color[loc]
@@ -3178,11 +3241,11 @@ def _(city_to_desert, idea_to_color, np, plt):
         # exp'tl isotherm mixed
         p_ovr_p0s = np.linspace(0, p_ovr_p0_max, 100)
         n = np.sum(
-            x[i] * expt_isotherm.water_ads(p_ovr_p0s) for i, expt_isotherm in enumerate(expt_isotherms)
+            x_opt[mof] * expt_isotherms[mof].water_ads(p_ovr_p0s) for mof in x_opt.keys()
         )
         label = ""
-        for i, expt_isotherm in enumerate(expt_isotherms):
-            label += f"{x[i]*100:.0f}% {expt_isotherm.name}\n"
+        for mof, x in x_opt.items():
+            label += f"{x*100:.0f}% {mof}\n"
         label = label[:-1]
         ax.plot(p_ovr_p0s, n, color="black", lw=3, zorder=10, label=label)
 
@@ -3209,10 +3272,16 @@ def _(city_to_desert, idea_to_color, np, plt):
 
 
 @app.cell
-def _(draw_mixed_shape_match, mofs_to_mix, unpickle, x_opt):
+def _(x_opt):
+    x_opt.items()
+    return
+
+
+@app.cell
+def _(draw_mixed_shape_match, expt_isotherms, unpickle, x_opt):
     draw_mixed_shape_match(
         unpickle("Stovepipe_winter_opt_isotherm"),
-        mofs_to_mix,
+        expt_isotherms,
         x_opt,
         loc="Stovepipe",
         season="Dec-Feb",
@@ -3222,22 +3291,22 @@ def _(draw_mixed_shape_match, mofs_to_mix, unpickle, x_opt):
 
 
 @app.cell
-def _(data_I_got, expt_isotherms, plt, sns):
+def _(expt_isotherms, mof_to_color, mof_to_marker, np, plt):
     def draw_mof_ads_data(expt_isotherms):
-        T = expt_isotherms[0].T
-
+        T = list(expt_isotherms.values())[0].T
+        for expt_isotherm in expt_isotherms.values():
+            assert np.isclose(expt_isotherm.T, T)
+        
         fig, ax = plt.subplots()
 
         plt.xlabel("relative humidity, $p / [p_0(T)]$")
         plt.ylabel(f"water adsorption at {T}°C\n[kg H$_2$O/kg MOF]")
-    
-        markers = ['o', 's', '^', 'D', 'x', '*']
-        colors = sns.color_palette("pastel", len(expt_isotherms))
-        for i, expt_isotherm in enumerate(expt_isotherms):
-            label = f"{expt_isotherm.name}"
+
+        for mof, expt_isotherm in expt_isotherms.items():
+            label = f"{mof}"
             ax.scatter(
                 expt_isotherm.data["RH[%]"] / 100.0, expt_isotherm.data["Water Uptake [kg kg-1]"],
-                label=label, color=colors[i], s=40, zorder=10, marker=markers[i]
+                label=label, color=mof_to_color[mof], s=40, zorder=10, marker=mof_to_marker[mof]
             )
 
         plt.xlim([0, 1])
@@ -3250,9 +3319,7 @@ def _(data_I_got, expt_isotherms, plt, sns):
 
         plt.show()
 
-    _expt_isotherms = [expt_isotherms[mof] for mof, T in data_I_got if T == 25]
-    _expt_isotherms = [expt_isotherms[mof] for mof in ["MOF-801", "Al-Fum", "KMF-1", "CAU-23"]]
-    draw_mof_ads_data(_expt_isotherms)
+    draw_mof_ads_data(expt_isotherms)
     return
 
 
