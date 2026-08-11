@@ -28,6 +28,7 @@ def _():
     import matplotlib
     from matplotlib.ticker import MaxNLocator
     import matplotlib.colors as colors
+    from sklearn.isotonic import IsotonicRegression
     import seaborn as sns
     from aquarel import load_theme
     import cartopy.crs as ccrs
@@ -51,6 +52,7 @@ def _():
     my_date_format_str = '%b-%d'
     my_date_format = mdates.DateFormatter(my_date_format_str)
     return (
+        IsotonicRegression,
         calendar,
         ccrs,
         cfeature,
@@ -74,6 +76,12 @@ def _():
         sns,
         warnings,
     )
+
+
+@app.cell
+def _():
+    R = 8.314 / 1000.0 # universal gas constant [kJ/(mol-K)]
+    return (R,)
 
 
 @app.cell
@@ -3031,7 +3039,7 @@ def _(mo):
 
 
 @app.cell
-def _(np, pd):
+def _(IsotonicRegression, R, np, pd):
     class ExptIsotherm:
         def __init__(self, name, T):
             self.name = name
@@ -3043,22 +3051,78 @@ def _(np, pd):
             url = f"https://github.com/SimonEnsemble/water_harvesting/raw/refs/heads/main/new/data/{filename}"
             self.data = pd.read_csv(url)
 
-            if self.data["RH[%]"].max() <= 1:
-                self.data["RH[%]"] = self.data["RH[%]"] * 100
+             # if the first row is zero RH, drop it.
+            if self.data['RH[%]'][0] == 0:
+                self.data = self.data.drop(0)
+                self.data = self.data.reset_index(drop=True)
 
-            self.data = self.data.sort_values("RH[%]")
+            # convert humidity to P/P_0
+            if self.data['RH[%]'].max() > 1.0: # truly a percent
+                self.data['P/P_0'] = self.data['RH[%]'] / 100
+            else: # RH ranges from 0 to 1
+                self.data['P/P_0'] = self.data['RH[%]']
 
-        def water_ads(self, p_ovr_p0):
-            return np.interp(
-                # RH query
-                np.asarray(p_ovr_p0) * 100, 
-                # RH in data
-                self.data["RH[%]"].to_numpy(), 
-                # water ads in data
-                self.data["Water Uptake [kg kg-1]"].to_numpy()
+            # Gets rid of the Humidity column, now we're using P/P_0
+            self.data = self.data.drop(columns=['RH[%]'])
+
+            # sort by pressure
+            self.data.sort_values(by="P/P_0", inplace=True, ignore_index=True)
+
+            # Polanyi adsorption potential for every P/P_0 in the data set
+            self.data["A [kJ/mol]"] = -R * (T + 273.15) * np.log(self.data['P/P_0'])
+            self.data.sort_values(by="A [kJ/mol]", inplace=True, ignore_index=True)
+
+            # monotonic interpolation of water ads. as a function of Polanyi potential A.
+            ir = IsotonicRegression(increasing=False, out_of_bounds='clip')
+            ir.fit(
+                self.data['A [kJ/mol]'].values.reshape(self.data.shape[0], 1), 
+                self.data['Water Uptake [kg kg-1]'].values
             )
 
+            def ads_of_A(A):
+                A_input = np.array([A]).reshape(-1, 1)
+                return ir.predict(A_input)[0]
+
+            self.ads_of_A = ads_of_A
+
+        def water_ads(self, T, p_over_p0):
+            if p_over_p0 > 1.0:
+                raise Exception("RH must fall in [0, 1]...")
+
+            # Calculate the Polanyi potential [kJ/mol]
+            A = -R * (T + 273.15) * np.log(p_over_p0)
+
+            if np.isinf(A):
+                return 0.0
+
+            A_input = np.array([A]).reshape(-1, 1)
+            return self.ads_of_A(A)
+
+        def water_del(self, conditions):
+            w_ads = self.water_ads(
+                conditions["ads T [°C]"].to_numpy(),
+                conditions["ads P/P0"].to_numpy(),
+            )
+            w_des = self.water_ads(
+                conditions["des T [°C]"].to_numpy(),
+                conditions["des P/P0"].to_numpy(),
+            )
+            return np.where(w_ads > w_des, w_ads - w_des, 0.0)
+
     return (ExptIsotherm,)
+
+
+@app.cell
+def _(ExptIsotherm):
+    iso_test = ExptIsotherm("KMF-1", 25)
+    iso_test.water_ads(25, 0.3)
+    return (iso_test,)
+
+
+@app.cell
+def _(iso_test):
+    iso_test.data
+    return
 
 
 @app.cell
@@ -3067,19 +3131,19 @@ def _():
         ["MOF-801", 25],
         ["KMF-1", 25],
         ["CAU-23", 25],
-        # ["MIL-160", 20],
+        ["MIL-160", 20],
         ["MOF-303", 25],
         ["CAU-10-H", 25],
         ["Al-Fum", 25],
-        # ["MIP-200", 30]
+        ["MIP-200", 30]
     ]
     return (mof_T_pairs,)
 
 
 @app.cell
 def _(mof_T_pairs, sns):
-    mof_to_marker = dict(zip([x[0] for x in mof_T_pairs], ['o', 's', '^', 'D', 'x', '*']))
-    mof_to_color = dict(zip([x[0] for x in mof_T_pairs], sns.color_palette("pastel", 6)))
+    mof_to_marker = dict(zip([x[0] for x in mof_T_pairs], ['o', 's', '^', 'D', 'x', '*', 'v', 'P']))
+    mof_to_color = dict(zip([x[0] for x in mof_T_pairs], sns.color_palette("pastel", 8)))
     return mof_to_color, mof_to_marker
 
 
@@ -3088,15 +3152,14 @@ def _(ExptIsotherm, mof_T_pairs):
     expt_isotherms = {
         mof: ExptIsotherm(mof, T) for mof, T in mof_T_pairs
     }
-
-    assert all([expt_isotherm.T == 25 for expt_isotherm in expt_isotherms.values()])
     return (expt_isotherms,)
 
 
 @app.cell
 def _(city_to_desert, idea_to_color, mof_to_color, np, plt):
     def draw_shape_match(wai, expt_isotherm, savename=None, loc=None, season=""):
-        T = expt_isotherm.T
+        assert np.isclose(expt_isotherm.T, wai.Tref)
+        T = wai.Tref
 
         fig, ax = plt.subplots()
 
@@ -3111,11 +3174,14 @@ def _(city_to_desert, idea_to_color, mof_to_color, np, plt):
 
         # exp'tl isotherm
         ax.scatter(
-            expt_isotherm.data["RH[%]"] / 100.0, expt_isotherm.data["Water Uptake [kg kg-1]"],
+            expt_isotherm.data["P/P_0"], expt_isotherm.data["Water Uptake [kg kg-1]"],
             label=f"{expt_isotherm.name}", color=mof_to_color[expt_isotherm.name], s=40, zorder=10
         )
-        p_ovr_p0s = np.linspace(0, expt_isotherm.data["RH[%]"].max()/100, 250)
-        ax.plot(p_ovr_p0s, expt_isotherm.water_ads(p_ovr_p0s), color=mof_to_color[expt_isotherm.name], lw=3, zorder=10)
+        p_ovr_p0s = np.linspace(0, expt_isotherm.data["P/P_0"].max(), 250)
+        ax.plot(
+            p_ovr_p0s, [expt_isotherm.water_ads(T, p_ovr_p0) for p_ovr_p0 in p_ovr_p0s], 
+            color=mof_to_color[expt_isotherm.name], lw=3, zorder=10
+        )
 
         plt.xlim([0, 1])
         plt.ylim(ymin=0)
@@ -3162,13 +3228,13 @@ def _(draw_shape_match, expt_isotherms, unpickle):
 @app.cell
 def _(np):
     def loss(x, wai, expt_isotherms):
-        T = expt_isotherms[0].T
+        T = wai.Tref
 
-        p_ovr_p0_max = np.min([expt_isotherm.data["RH[%]"].max()/100 for expt_isotherm in expt_isotherms])
-        p_ovr_p0s = np.linspace(0, p_ovr_p0_max, 35)
+        p_ovr_p0s = np.linspace(0.0001, 0.999, 35)
 
         n_mix = np.sum(
-            x[i] * expt_isotherm.water_ads(p_ovr_p0s) for i, expt_isotherm in enumerate(expt_isotherms)
+            x[i] * np.array([expt_isotherm.water_ads(T, p_ovr_p0) for p_ovr_p0 in p_ovr_p0s])
+                             for i, expt_isotherm in enumerate(expt_isotherms)
         )
 
         n_target = wai.water_ads(T, p_ovr_p0s)
@@ -3202,7 +3268,7 @@ def _(combinations, loss, minimize, np):
         )
         return result
 
-    def do_shape_matching_sparse(wai, expt_isotherms, max_nonzero=3):
+    def do_shape_matching_sparse(wai, expt_isotherms, max_nonzero=4):
         n = len(expt_isotherms)
         mofs = list(expt_isotherms.keys())
 
@@ -3251,8 +3317,8 @@ def _(do_shape_matching_sparse, expt_isotherms, unpickle):
 @app.cell
 def _(city_to_desert, idea_to_color, np, plt):
     def draw_mixed_shape_match(wai, expt_isotherms, x_opt, savename=None, loc=None, season=None):
-        p_ovr_p0_max = np.min([expt_isotherm.data["RH[%]"].max()/100 for expt_isotherm in expt_isotherms.values()])
-        T = 25.0
+        # p_ovr_p0_max = np.min([expt_isotherm.data["P/P_0"].max() for expt_isotherm in expt_isotherms.values()])
+        T = wai.Tref
 
         fig, ax = plt.subplots()
 
@@ -3266,9 +3332,9 @@ def _(city_to_desert, idea_to_color, np, plt):
         plt.plot(p_ovr_p0s, ws, label=f"optimal for\n{city_to_desert[loc]} Desert\n({season})", lw=3, color=color)
 
         # exp'tl isotherm mixed
-        p_ovr_p0s = np.linspace(0, p_ovr_p0_max, 100)
+        p_ovr_p0s = np.linspace(0, 1.0, 100)
         n = np.sum(
-            [x_opt[mof] * expt_isotherms[mof].water_ads(p_ovr_p0s) for mof in x_opt.keys()], axis=0
+            x_opt[mof] * np.array([expt_isotherms[mof].water_ads(T, p_ovr_p0) for p_ovr_p0 in p_ovr_p0s]) for mof in x_opt.keys()
         )
         label = ""
         for mof, x in x_opt.items():
@@ -3320,26 +3386,32 @@ def _(draw_mixed_shape_match, expt_isotherms, unpickle, x_opt):
 @app.cell
 def _(expt_isotherms, mof_to_color, mof_to_marker, np, plt):
     def draw_mof_ads_data(expt_isotherms):
-        T = list(expt_isotherms.values())[0].T
-        for expt_isotherm in expt_isotherms.values():
-            assert np.isclose(expt_isotherm.T, T)
-
         fig, ax = plt.subplots()
 
         plt.xlabel("relative humidity, $p / [p_0(T)]$")
-        plt.ylabel(f"water adsorption at {T}°C\n[kg H$_2$O/kg MOF]")
+        plt.ylabel(f"water adsorption\n[kg H$_2$O/kg MOF]")
 
         for mof, expt_isotherm in expt_isotherms.items():
             label = f"{mof}"
+            T = expt_isotherm.T
+            # ax.plot(
+            #     expt_isotherm.data["P/P_0"], expt_isotherm.data["Water Uptake [kg kg-1]"],
+            #     label=label, color=mof_to_color[mof], markersize=5, zorder=10, marker=mof_to_marker[mof]
+            # )
             ax.scatter(
-                expt_isotherm.data["RH[%]"] / 100.0, expt_isotherm.data["Water Uptake [kg kg-1]"],
-                label=label, color=mof_to_color[mof], s=40, zorder=10, marker=mof_to_marker[mof]
+                expt_isotherm.data["P/P_0"], expt_isotherm.data["Water Uptake [kg kg-1]"],
+                label=f"{expt_isotherm.name} ({T}°C)", color=mof_to_color[mof], s=15, zorder=10, marker=mof_to_marker[mof]
+            )
+            p_ovr_p0s = np.linspace(0, expt_isotherm.data["P/P_0"].max(), 250)
+            ax.plot(
+                p_ovr_p0s, [expt_isotherm.water_ads(T, p_ovr_p0) for p_ovr_p0 in p_ovr_p0s], 
+                color=mof_to_color[mof], zorder=10
             )
 
         plt.xlim([0, 1])
         plt.ylim(ymin=0)
 
-        plt.legend(loc="lower right")# , bbox_to_anchor=(1.02, 1))
+        plt.legend(loc="lower right", fontsize=11)# , bbox_to_anchor=(1.02, 1))
         plt.tight_layout()
 
         plt.savefig("expt_isotherms.pdf", format="pdf", bbox_inches="tight")
@@ -3409,16 +3481,22 @@ def _(ExptIsotherm):
 
 
 @app.cell
+def _(expt_isotherms):
+    expt_isotherms["CAU-23"].data.loc[0, :]
+    return
+
+
+@app.cell
 def _(cau_23_isotherms, np, plt):
     def draw_cau23_toy(isotherms):
         mof = "CAU-23"
-        T = {"hot": 60, "cold": 25}
+        T = {"hot": 60, "cold": 8}
         colors = {
             "hot": tuple(c / 255 for c in (238, 226, 76)),
             "cold": tuple(c / 255 for c in (24, 117, 168)),
         }
         subscript = {"hot": "d", "cold": "n"}
-        id = {"hot": 32, "cold": 18}
+        id = {"hot": 32, "cold": 10}
         
         p_over_p0s = np.linspace(0, 1.0, 100)
 
@@ -3429,7 +3507,7 @@ def _(cau_23_isotherms, np, plt):
         # norm = colors.Normalize(vmin=0.0, vmax=70.0)
         for hc in ["cold", "hot"]:
             plt.plot(
-                isotherms[hc].data["RH[%]"] / 100, isotherms[hc].data["Water Uptake [kg kg-1]"], 
+                isotherms[hc].data["P/P_0"], isotherms[hc].data["Water Uptake [kg kg-1]"], 
                 marker="s",
                 color=colors[hc],
                 markerfacecolor="none",
@@ -3437,13 +3515,13 @@ def _(cau_23_isotherms, np, plt):
                 label=f"$T_{subscript[hc]}$ = {T[hc]:.0f} °C"
             )
             plt.plot(
-                isotherms[hc].data.loc[id[hc], "RH[%]"] / 100, isotherms[hc].data.loc[id[hc], "Water Uptake [kg kg-1]"], 
+                isotherms[hc].data.loc[id[hc], "P/P_0"], isotherms[hc].data.loc[id[hc], "Water Uptake [kg kg-1]"], 
                 marker="s",
                 color=colors[hc], markeredgecolor="black"
             )
 
         # to viz DC
-        phi = {hc: isotherms[hc].data.loc[id[hc], "RH[%]"] / 100 for hc in ["hot", "cold"]}
+        phi = {hc: isotherms[hc].data.loc[id[hc], "P/P_0"] for hc in ["hot", "cold"]}
         n = {hc: isotherms[hc].data.loc[id[hc], "Water Uptake [kg kg-1]"] for hc in ["hot", "cold"]}
         plt.plot([phi["hot"], phi["cold"]], [n["hot"], n["hot"]], color="gray", linestyle="--")
         plt.arrow(
