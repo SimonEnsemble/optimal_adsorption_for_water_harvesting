@@ -1262,11 +1262,6 @@ def _():
 
 
 @app.cell
-def _():
-    return
-
-
-@app.cell
 def _(n_day_period, np, pd):
     def get_nday_totals(wai, weather, n_day_period=n_day_period, n_samples=5, seed=1337):
         attach_water_delivery(wai, weather)
@@ -1368,7 +1363,7 @@ def _(
     score_fitness,
     w_max,
 ):
-    def draw_fitness_scores(wai, weather):
+    def draw_fitness_scores(wai, weather, other_savename=None):
         max_score = w_max * n_day_period
         x_grid = np.linspace(0, max_score, 150)
 
@@ -1405,7 +1400,10 @@ def _(
         plt.legend()
         plt.tight_layout()
 
-        plt.savefig(weather.tag + "/best_wai_water_del_distn.pdf", format="pdf")
+        if other_savename:
+            plt.savefig(other_savename + ".pdf", format="pdf")
+        else:
+            plt.savefig(weather.tag + "/best_wai_water_del_distn.pdf", format="pdf")
         plt.show()
 
     return (draw_fitness_scores,)
@@ -3044,6 +3042,7 @@ def _(IsotonicRegression, R, np, pd):
         def __init__(self, name, T):
             self.name = name
             self.T = T
+            self.tag = name
 
             # read ads data
             filename = f"{self.name}_{self.T}C.csv"
@@ -3080,23 +3079,25 @@ def _(IsotonicRegression, R, np, pd):
             )
 
             def ads_of_A(A):
-                A_input = np.array([A]).reshape(-1, 1)
-                return ir.predict(A_input)[0]
+                A_input = np.array(A).reshape(-1, 1)
+                return ir.predict(A_input)
 
             self.ads_of_A = ads_of_A
-
+        
         def water_ads(self, T, p_over_p0):
-            if p_over_p0 > 1.0:
-                raise Exception("RH must fall in [0, 1]...")
+            p_over_p0 = np.asarray(p_over_p0, dtype=float)
+            if np.any(p_over_p0 > 1.0):
+                raise Exception("p_over_p0 > 1")
 
             # Calculate the Polanyi potential [kJ/mol]
             A = -R * (T + 273.15) * np.log(p_over_p0)
+            A = np.where(np.isinf(A), 0.0, A) # to feed in valid A
 
-            if np.isinf(A):
-                return 0.0
-
-            A_input = np.array([A]).reshape(-1, 1)
-            return self.ads_of_A(A)
+            n = self.ads_of_A(A)
+        
+            n = np.where(np.isinf(A), 0.0, n)
+            n = np.where(np.isclose(p_over_p0, 0.0), 0.0, n)
+            return n
 
         def water_del(self, conditions):
             w_ads = self.water_ads(
@@ -3110,19 +3111,6 @@ def _(IsotonicRegression, R, np, pd):
             return np.where(w_ads > w_des, w_ads - w_des, 0.0)
 
     return (ExptIsotherm,)
-
-
-@app.cell
-def _(ExptIsotherm):
-    iso_test = ExptIsotherm("KMF-1", 25)
-    iso_test.water_ads(25, 0.3)
-    return (iso_test,)
-
-
-@app.cell
-def _(iso_test):
-    iso_test.data
-    return
 
 
 @app.cell
@@ -3164,11 +3152,11 @@ def _(city_to_desert, idea_to_color, mof_to_color, np, plt):
         fig, ax = plt.subplots()
 
         plt.xlabel("relative humidity, $p / [p_0(T)]$")
-        plt.ylabel(f"water adsorption at {T}°C\n[kg H$_2$O/kg MOF]")
+        plt.ylabel(f"water adsorption at {T:.0f}°C\n[kg H$_2$O/kg MOF]")
 
         # target WAI
         color = idea_to_color[loc]
-        p_ovr_p0s = np.linspace(0, 1, 250)
+        p_ovr_p0s = np.linspace(0.001, 1, 250)
         ws = wai.water_ads(T, p_ovr_p0s)
         plt.plot(p_ovr_p0s, ws, label=f"optimal for\n{city_to_desert[loc]} Desert\n({season})", lw=3, color=color)
 
@@ -3177,9 +3165,9 @@ def _(city_to_desert, idea_to_color, mof_to_color, np, plt):
             expt_isotherm.data["P/P_0"], expt_isotherm.data["Water Uptake [kg kg-1]"],
             label=f"{expt_isotherm.name}", color=mof_to_color[expt_isotherm.name], s=40, zorder=10
         )
-        p_ovr_p0s = np.linspace(0, expt_isotherm.data["P/P_0"].max(), 250)
+        p_ovr_p0s = np.linspace(0.001, expt_isotherm.data["P/P_0"].max(), 250)
         ax.plot(
-            p_ovr_p0s, [expt_isotherm.water_ads(T, p_ovr_p0) for p_ovr_p0 in p_ovr_p0s], 
+            p_ovr_p0s, expt_isotherm.water_ads(T, p_ovr_p0s),
             color=mof_to_color[expt_isotherm.name], lw=3, zorder=10
         )
 
@@ -3226,6 +3214,12 @@ def _(draw_shape_match, expt_isotherms, unpickle):
 
 
 @app.cell
+def _(draw_fitness_scores, expt_isotherms, unpickle):
+    draw_fitness_scores(expt_isotherms["CAU-23"], unpickle(f"Riley_summer_weather"), other_savename="CAU-23_fitness_Riley_Summer")
+    return
+
+
+@app.cell
 def _(np):
     def loss(x, wai, expt_isotherms):
         T = wai.Tref
@@ -3233,8 +3227,7 @@ def _(np):
         p_ovr_p0s = np.linspace(0.0001, 0.999, 35)
 
         n_mix = np.sum(
-            x[i] * np.array([expt_isotherm.water_ads(T, p_ovr_p0) for p_ovr_p0 in p_ovr_p0s])
-                             for i, expt_isotherm in enumerate(expt_isotherms)
+            x[i] * expt_isotherm.water_ads(T, p_ovr_p0s) for i, expt_isotherm in enumerate(expt_isotherms)
         )
 
         n_target = wai.water_ads(T, p_ovr_p0s)
@@ -3310,7 +3303,7 @@ def _(combinations, loss, minimize, np):
 
 @app.cell
 def _(do_shape_matching_sparse, expt_isotherms, unpickle):
-    x_opt = do_shape_matching_sparse(unpickle("Stovepipe_winter_opt_isotherm"), expt_isotherms)
+    x_opt = do_shape_matching_sparse(unpickle("Stovepipe_winter_opt_isotherm"), expt_isotherms, max_nonzero=8)
     return (x_opt,)
 
 
@@ -3325,22 +3318,22 @@ def _(city_to_desert, idea_to_color, np, plt):
         plt.xlabel("relative humidity, $p / [p_0(T)]$")
         plt.ylabel(f"water adsorption at 25°C\n[kg H$_2$O/kg MOF]")
 
-        # target WAI
-        color = idea_to_color[loc]
-        p_ovr_p0s = np.linspace(0, 1, 250)
-        ws = wai.water_ads(T, p_ovr_p0s)
-        plt.plot(p_ovr_p0s, ws, label=f"optimal for\n{city_to_desert[loc]} Desert\n({season})", lw=3, color=color)
-
+        p_ovr_p0s = np.linspace(0.0001, 1, 250)
         # exp'tl isotherm mixed
-        p_ovr_p0s = np.linspace(0, 1.0, 100)
-        n = np.sum(
+        n_mix = np.sum(
             x_opt[mof] * np.array([expt_isotherms[mof].water_ads(T, p_ovr_p0) for p_ovr_p0 in p_ovr_p0s]) for mof in x_opt.keys()
         )
+
+        # target WAI
+        color = idea_to_color[loc]
+        ws = wai.water_ads(T, p_ovr_p0s)
+        plt.plot(p_ovr_p0s, ws, label=f"optimal for\n{city_to_desert[loc]} Desert\n({season})", lw=3, color=color)
+ 
         label = ""
-        for mof, x in x_opt.items():
+        for mof, x in sorted(x_opt.items(), key=lambda item: item[1], reverse=True):
             label += f"{x*100:.0f}% {mof}\n"
         label = label[:-1]
-        ax.plot(p_ovr_p0s, n, color="black", lw=3, zorder=10, label=label)
+        ax.plot(p_ovr_p0s, n_mix, color="black", lw=3, zorder=10, label=label)
 
         # markers = ["s", "o", "D"]
         # for i, expt_isotherm in enumerate(expt_isotherms):
@@ -3378,7 +3371,7 @@ def _(draw_mixed_shape_match, expt_isotherms, unpickle, x_opt):
         x_opt,
         loc="Stovepipe",
         season="Dec-Feb",
-        savename="Stovepipe_winter/shape_match"
+        savename=f"Stovepipe_winter/shape_match_{len(x_opt)}"
     )
     return
 
@@ -3402,9 +3395,9 @@ def _(expt_isotherms, mof_to_color, mof_to_marker, np, plt):
                 expt_isotherm.data["P/P_0"], expt_isotherm.data["Water Uptake [kg kg-1]"],
                 label=f"{expt_isotherm.name} ({T}°C)", color=mof_to_color[mof], s=15, zorder=10, marker=mof_to_marker[mof]
             )
-            p_ovr_p0s = np.linspace(0, expt_isotherm.data["P/P_0"].max(), 250)
+            p_ovr_p0s = np.linspace(0.0001, expt_isotherm.data["P/P_0"].max(), 250)
             ax.plot(
-                p_ovr_p0s, [expt_isotherm.water_ads(T, p_ovr_p0) for p_ovr_p0 in p_ovr_p0s], 
+                p_ovr_p0s, expt_isotherm.water_ads(T, p_ovr_p0s), 
                 color=mof_to_color[mof], zorder=10
             )
 
@@ -3450,18 +3443,18 @@ def _(mof_to_color, norm, np, plt):
 
         # shade the worst (1-alpha) of the distribution
         tail = x <= var
-        ax.fill_between(x[tail], pdf[tail], color=color, alpha=0.35,
+        ax.fill_between(x[tail], pdf[tail], color=color, alpha=0.9,
                         label=f"worst {1 - alpha:.0%}")
 
         ax.axvline(var, color="gray", ls="--", lw=1.5, label=f"{100*alpha:.0f}%-VaR")
-        ax.axvline(cvar, color=mof_to_color["CAU-10-H"], lw=2, label=f"{100*alpha:.0f}%-CVaR")
+        ax.axvline(cvar, color=mof_to_color["MIL-160"], lw=2, label=f"{100*alpha:.0f}%-CVaR")
 
         ax.set_xlabel("water delivery [kg H$_2$O/kg sorbent]", labelpad=10)
-        ax.set_ylabel("# scenarios")
+        ax.set_ylabel("# calendar days")
         ax.set_ylim(bottom=0)
         ax.set_xticks([])
         ax.set_yticks([0])
-        # ax.legend(frameon=False, fontsize=13, loc=(0.625, 0.65))
+        ax.legend(frameon=False, fontsize=13, loc=(0.625, 0.65))
         # plt.tight_layout()
         plt.savefig("cvar.pdf", format="pdf", bbox_inches="tight")
         plt.show()
@@ -3478,12 +3471,6 @@ def _(ExptIsotherm):
 
     cau_23_isotherms = get_cau23_isotherms()
     return (cau_23_isotherms,)
-
-
-@app.cell
-def _(expt_isotherms):
-    expt_isotherms["CAU-23"].data.loc[0, :]
-    return
 
 
 @app.cell
@@ -3533,8 +3520,13 @@ def _(cau_23_isotherms, np, plt):
 
         ax.set_xlim(0, 1.0)
         ax.set_ylim(ymin=0)
+        plt.text(
+            phi["cold"] + 0.02, (n["hot"] + n["cold"]) / 2,
+            "water delivery",
+            color="gray", ha="left", va="center"#, fontsize=11
+        )
 
-        plt.savefig(f"{mof}_isotherms.pdf", format="pdf", bbox_inches="tight")
+        plt.savefig(f"{mof}_isotherms_water_del_illustration.pdf", format="pdf", bbox_inches="tight")
 
         plt.show()
 
