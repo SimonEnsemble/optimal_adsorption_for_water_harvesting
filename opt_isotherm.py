@@ -828,7 +828,7 @@ def _(T_range, idea_to_color, np, plt, weather):
             cols = ["ads T [°C]", "des T [°C]"]
         elif temp_or_humid == "RH":
             cols = ["ads P/P0", "des P/P0"]
-    
+
         avg_weather = weather.ads_des_conditions.groupby("location")[
             cols
         ].mean().reset_index()
@@ -837,26 +837,26 @@ def _(T_range, idea_to_color, np, plt, weather):
         )
 
         n_cities = avg_weather.shape[0]
-    
+
         fig, ax = plt.subplots(figsize=(4, 1.5))
-    
+
         ax.set_yticks([0, 1])
         ax.set_ylim([-0.5, 1.5])
         ax.set_yticklabels(["capture", "release"])
         ax.yaxis.set_minor_locator(plt.NullLocator())
 
         colors = [idea_to_color[city] for city in avg_weather["location"]]
-    
+
         plt.scatter(avg_weather["capture"], np.zeros(n_cities), clip_on=False, s=60, color=colors)
         plt.scatter(avg_weather["release"], np.ones(n_cities), clip_on=False, s=60, color=colors)
 
         ax.set_xlabel(temp_or_humid)
-    
+
         if temp_or_humid == "temperature [°C]":
             ax.set_xlim(T_range)
         else:
             ax.set_xlim([0, 1])
-    
+
         for _, row in avg_weather.iterrows():
             ax.plot([row["capture"], row["release"]], [0, 1], color="gray", linewidth=1, zorder=0)
 
@@ -1224,9 +1224,10 @@ def _(BernPolyBasis, colors, inset_axes, np, plt, temp_colormap, w_max):
 
 @app.cell
 def _(WaterAdsorptionIsotherm):
-    wai = WaterAdsorptionIsotherm(10)
-    wai.endow_stepped_isotherm(3)
+    wai = WaterAdsorptionIsotherm(35)
+    wai.endow_stepped_isotherm(5)
     # wai.draw(boundary_color="green")
+    # wai.get_p_ovr_p0_half_max()
     return (wai,)
 
 
@@ -3163,7 +3164,8 @@ def _(np):
     def loss(x, wai, expt_isotherms):
         T = expt_isotherms[0].T
 
-        p_ovr_p0s = np.linspace(0, 1.0, 35)
+        p_ovr_p0_max = np.min([expt_isotherm.data["RH[%]"].max()/100 for expt_isotherm in expt_isotherms])
+        p_ovr_p0s = np.linspace(0, p_ovr_p0_max, 35)
 
         n_mix = np.sum(
             x[i] * expt_isotherm.water_ads(p_ovr_p0s) for i, expt_isotherm in enumerate(expt_isotherms)
@@ -3174,21 +3176,6 @@ def _(np):
         return np.sum((n_mix - n_target) ** 2)
 
     return (loss,)
-
-
-@app.cell
-def _(expt_isotherms):
-    expt_isotherms.keys()
-    return
-
-
-@app.cell
-def _(expt_isotherms):
-    _mofs = ["MOF-801", "Al-Fum", "KMF-1", "CAU-23", "MOF-303", "CAU-10-H"]
-
-    # _mofs = [mof for mof, T in data_I_got if T == 25]
-    mofs_to_mix = [expt_isotherms[mof] for mof in _mofs]
-    return (mofs_to_mix,)
 
 
 @app.cell
@@ -3252,18 +3239,12 @@ def _(combinations, loss, minimize, np):
 
         return fits[0][1]
 
-    return do_shape_matching, do_shape_matching_sparse
+    return (do_shape_matching_sparse,)
 
 
 @app.cell
-def _(do_shape_matching, mofs_to_mix, unpickle):
-    do_shape_matching(unpickle("Stovepipe_winter_opt_isotherm"), mofs_to_mix)
-    return
-
-
-@app.cell
-def _(do_shape_matching_sparse, expt_isotherms, wai):
-    x_opt = do_shape_matching_sparse(wai, expt_isotherms)
+def _(do_shape_matching_sparse, expt_isotherms, unpickle):
+    x_opt = do_shape_matching_sparse(unpickle("Stovepipe_winter_opt_isotherm"), expt_isotherms)
     return (x_opt,)
 
 
@@ -3287,7 +3268,7 @@ def _(city_to_desert, idea_to_color, np, plt):
         # exp'tl isotherm mixed
         p_ovr_p0s = np.linspace(0, p_ovr_p0_max, 100)
         n = np.sum(
-            x_opt[mof] * expt_isotherms[mof].water_ads(p_ovr_p0s) for mof in x_opt.keys()
+            [x_opt[mof] * expt_isotherms[mof].water_ads(p_ovr_p0s) for mof in x_opt.keys()], axis=0
         )
         label = ""
         for mof, x in x_opt.items():
@@ -3342,7 +3323,7 @@ def _(expt_isotherms, mof_to_color, mof_to_marker, np, plt):
         T = list(expt_isotherms.values())[0].T
         for expt_isotherm in expt_isotherms.values():
             assert np.isclose(expt_isotherm.T, T)
-        
+
         fig, ax = plt.subplots()
 
         plt.xlabel("relative humidity, $p / [p_0(T)]$")
@@ -3372,7 +3353,7 @@ def _(expt_isotherms, mof_to_color, mof_to_marker, np, plt):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    # toy CVaR plot
+    # toy CVaR and isotherm plots
     """)
     return
 
@@ -3382,27 +3363,27 @@ def _(mof_to_color, norm, np, plt):
     def viz_cVar():
         mu, sigma = 0.5, 1.5      # convention: positive values = losses
         alpha = 0.8
-    
+
         z = norm.ppf(alpha)                              # standard-normal quantile
         var = mu - sigma * z                             # VaR: the cut point
         cvar = mu - sigma * norm.pdf(z) / (1 - alpha)    # CVaR: mean beyond the cut
-    
+
         x = np.linspace(mu - 4 * sigma, mu + 4 * sigma, 500)
         pdf = norm.pdf(x, mu, sigma)
-    
+
         fig, ax = plt.subplots(figsize=(4.5, 3.5))
         ax.plot(x, pdf, color="black", lw=1.8)
 
         color = mof_to_color["MOF-303"]
-    
+
         # shade the worst (1-alpha) of the distribution
         tail = x <= var
         ax.fill_between(x[tail], pdf[tail], color=color, alpha=0.35,
                         label=f"worst {1 - alpha:.0%}")
-    
+
         ax.axvline(var, color="gray", ls="--", lw=1.5, label=f"{100*alpha:.0f}%-VaR")
         ax.axvline(cvar, color=mof_to_color["CAU-10-H"], lw=2, label=f"{100*alpha:.0f}%-CVaR")
-    
+
         ax.set_xlabel("water delivery [kg H$_2$O/kg sorbent]", labelpad=10)
         ax.set_ylabel("# scenarios")
         ax.set_ylim(bottom=0)
@@ -3414,6 +3395,72 @@ def _(mof_to_color, norm, np, plt):
         plt.show()
 
     viz_cVar()
+    return
+
+
+@app.cell
+def _(ExptIsotherm):
+    def get_cau23_isotherms():
+        T = {"hot": 60, "cold": 25}
+        return {hc: ExptIsotherm("CAU-23", T[hc]) for hc in ["hot", "cold"]}
+
+    cau_23_isotherms = get_cau23_isotherms()
+    return (cau_23_isotherms,)
+
+
+@app.cell
+def _(cau_23_isotherms, np, plt):
+    def draw_cau23_toy(isotherms):
+        mof = "CAU-23"
+        T = {"hot": 60, "cold": 25}
+        colors = {
+            "hot": tuple(c / 255 for c in (238, 226, 76)),
+            "cold": tuple(c / 255 for c in (24, 117, 168)),
+        }
+        subscript = {"hot": "d", "cold": "n"}
+        id = {"hot": 32, "cold": 18}
+        
+        p_over_p0s = np.linspace(0, 1.0, 100)
+
+        fig, ax = plt.subplots(figsize=(4.75, 3.75))
+        plt.xlabel("relative humidity, $p/p_0(T)$")
+        plt.ylabel("water adsorption\n[kg H$_2$O/kg sorbent]")
+
+        # norm = colors.Normalize(vmin=0.0, vmax=70.0)
+        for hc in ["cold", "hot"]:
+            plt.plot(
+                isotherms[hc].data["RH[%]"] / 100, isotherms[hc].data["Water Uptake [kg kg-1]"], 
+                marker="s",
+                color=colors[hc],
+                markerfacecolor="none",
+                markeredgecolor=(*colors[hc], 0.4),
+                label=f"$T_{subscript[hc]}$ = {T[hc]:.0f} °C"
+            )
+            plt.plot(
+                isotherms[hc].data.loc[id[hc], "RH[%]"] / 100, isotherms[hc].data.loc[id[hc], "Water Uptake [kg kg-1]"], 
+                marker="s",
+                color=colors[hc], markeredgecolor="black"
+            )
+
+        # to viz DC
+        phi = {hc: isotherms[hc].data.loc[id[hc], "RH[%]"] / 100 for hc in ["hot", "cold"]}
+        n = {hc: isotherms[hc].data.loc[id[hc], "Water Uptake [kg kg-1]"] for hc in ["hot", "cold"]}
+        plt.plot([phi["hot"], phi["cold"]], [n["hot"], n["hot"]], color="gray", linestyle="--")
+        plt.arrow(
+            phi["cold"], n["cold"], 0, n["hot"] - n["cold"], 
+            color="gray", head_width=0.02, length_includes_head=True,
+            lw=2, zorder=10
+        )
+        plt.legend()
+
+        ax.set_xlim(0, 1.0)
+        ax.set_ylim(ymin=0)
+
+        plt.savefig(f"{mof}_isotherms.pdf", format="pdf", bbox_inches="tight")
+
+        plt.show()
+
+    draw_cau23_toy(cau_23_isotherms)
     return
 
 
