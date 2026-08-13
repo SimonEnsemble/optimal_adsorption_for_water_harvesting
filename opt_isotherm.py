@@ -810,22 +810,30 @@ def _(os, weather):
 
 
 @app.cell
-def _(city_to_desert, dropdown_time, weather):
-    print(dropdown_time.value)
-    for wmetric in ["ads T [°C]", "des T [°C]", "ads P/P0", "des P/P0"]:
-        print(wmetric)
-        for _loc, _group in weather.ads_des_conditions.groupby("location"):
+def _(weather):
+    weather.ads_des_conditions.groupby("location")[
+        ["ads T [°C]", "des T [°C]", "ads P/P0", "des P/P0"]
+    ].mean().reset_index()
+    return
 
-            print("\t" + city_to_desert[_loc])
-            # print("\t\tmin = ", _group[wmetric].min())
-            # print("\t\tmax = ", _group[wmetric].max())
-            print("\t\tmean = ", _group[wmetric].mean())
-            print("\t\tstd = ", _group[wmetric].std())
 
-    for _loc, _group in weather.ads_des_conditions.groupby("location"):
-        print(city_to_desert[_loc])
-        print("\tmean delta p/p0: ", (_group["ads P/P0"] - _group["des P/P0"]).mean())
-        print("\tmean p/p0 midpoint: ", ((_group["ads P/P0"] + _group["des P/P0"])/2).mean())
+@app.cell
+def _():
+    # print(dropdown_time.value)
+    # for wmetric in ["ads T [°C]", "des T [°C]", "ads P/P0", "des P/P0"]:
+    #     print(wmetric)
+    #     for _loc, _group in weather.ads_des_conditions.groupby("location"):
+
+    #         print("\t" + city_to_desert[_loc])
+    #         # print("\t\tmin = ", _group[wmetric].min())
+    #         # print("\t\tmax = ", _group[wmetric].max())
+    #         print("\t\tmean = ", _group[wmetric].mean())
+    #         print("\t\tstd = ", _group[wmetric].std())
+
+    # for _loc, _group in weather.ads_des_conditions.groupby("location"):
+    #     print(city_to_desert[_loc])
+    #     print("\tmean delta p/p0: ", (_group["ads P/P0"] - _group["des P/P0"]).mean())
+    #     print("\tmean p/p0 midpoint: ", ((_group["ads P/P0"] + _group["des P/P0"])/2).mean())
     return
 
 
@@ -1263,7 +1271,7 @@ def _():
 
 @app.cell
 def _(n_day_period, np, pd):
-    def get_nday_totals(wai, weather, n_day_period=n_day_period, n_samples=5, seed=1337):
+    def get_nday_totals(wai, weather, n_day_period=n_day_period, n_samples=10, seed=1337):
         attach_water_delivery(wai, weather)
         rng = np.random.default_rng(seed)
         col = "water del [kg H$_2$O/kg MOF]"
@@ -2189,6 +2197,12 @@ def _(alpha, dropdown, fitnesses_gen, np, pd, plt, sns, weather):
 
 
 @app.cell
+def _(fitnesses_gen):
+    fitnesses_gen[-1].max()
+    return
+
+
+@app.cell
 def _(dropdown):
     dropdown.value
     return
@@ -2726,7 +2740,9 @@ def _(
             color = idea_to_color[loc]
 
             period_totals, per_location_var, per_location_cvar, min_cvar = score_fitness(wai, weather)
+            print(city_to_desert[loc])
             print("fitness [kg/kg]: ", min_cvar)
+            print("fitness: ", min_cvar / (n_day_period * wai.w_max))
             assert period_totals.max() < max_score
 
             # KDE
@@ -2774,8 +2790,8 @@ def _(city_to_desert, idea_to_color, np, p_ovr_p0_ticks, plt):
 
         for wai, weather in zip(wais, weathers):
             loc = weather.tag.split("_")[0]
-            print(loc)
-            print(wai.get_p_ovr_p0_half_max())
+            print(city_to_desert[loc])
+            print("p/p0 halfmax:", wai.get_p_ovr_p0_half_max())
             plt.plot(
                 p_over_p0s, 
                 [wai.water_ads(wai.Tref, p_over_p0) for p_over_p0 in p_over_p0s],
@@ -2813,10 +2829,10 @@ def _(mo):
 @app.cell
 def _(unpickle):
     # bring A -> B
-    loc_A = "Stovepipe"
+    loc_A = "Riley"
     season_A = "summer"
 
-    loc_B = "Riley"
+    loc_B = "Stovepipe"
     season_B = "summer"
 
     comparison_case = f"wai_for_{loc_A}_{season_A}_operating_in_{loc_B}_{season_B}"
@@ -3036,6 +3052,13 @@ def _(mo):
     return
 
 
+@app.cell(hide_code=True)
+def _(mo):
+    shape_match = mo.ui.checkbox(label="do shape matching")
+    shape_match
+    return (shape_match,)
+
+
 @app.cell
 def _(IsotonicRegression, R, np, pd):
     class ExptIsotherm:
@@ -3083,7 +3106,7 @@ def _(IsotonicRegression, R, np, pd):
                 return ir.predict(A_input)
 
             self.ads_of_A = ads_of_A
-        
+
         def water_ads(self, T, p_over_p0):
             p_over_p0 = np.asarray(p_over_p0, dtype=float)
             if np.any(p_over_p0 > 1.0):
@@ -3094,7 +3117,7 @@ def _(IsotonicRegression, R, np, pd):
             A = np.where(np.isinf(A), 0.0, A) # to feed in valid A
 
             n = self.ads_of_A(A)
-        
+
             n = np.where(np.isinf(A), 0.0, n)
             n = np.where(np.isclose(p_over_p0, 0.0), 0.0, n)
             return n
@@ -3136,10 +3159,11 @@ def _(mof_T_pairs, sns):
 
 
 @app.cell
-def _(ExptIsotherm, mof_T_pairs):
-    expt_isotherms = {
-        mof: ExptIsotherm(mof, T) for mof, T in mof_T_pairs
-    }
+def _(ExptIsotherm, mof_T_pairs, shape_match):
+    if shape_match.value:
+        expt_isotherms = {
+            mof: ExptIsotherm(mof, T) for mof, T in mof_T_pairs
+        }
     return (expt_isotherms,)
 
 
@@ -3193,29 +3217,32 @@ def _(mo):
 
 
 @app.cell
-def _(expt_isotherms, loss, mof_T_pairs, unpickle):
-    _target_wai = unpickle("Riley_summer_opt_isotherm")
-    for _mof, _ in mof_T_pairs:
-        _expt_isotherm = expt_isotherms[_mof]
-        print(f"{_mof} loss: ", loss([1], _target_wai, [_expt_isotherm]))
+def _(expt_isotherms, loss, mof_T_pairs, shape_match, unpickle):
+    if shape_match.value:
+        _target_wai = unpickle("Riley_summer_opt_isotherm")
+        for _mof, _ in mof_T_pairs:
+            _expt_isotherm = expt_isotherms[_mof]
+            print(f"{_mof} loss: ", loss([1], _target_wai, [_expt_isotherm]))
     return
 
 
 @app.cell
-def _(draw_shape_match, expt_isotherms, unpickle):
-    draw_shape_match(
-        unpickle("Riley_summer_opt_isotherm"),
-        expt_isotherms["CAU-23"],
-        loc="Riley",
-        season="May-Sep",
-        savename="Riley_summer/shape_match"
-    )
+def _(draw_shape_match, expt_isotherms, shape_match, unpickle):
+    if shape_match.value:
+        draw_shape_match(
+            unpickle("Riley_summer_opt_isotherm"),
+            expt_isotherms["CAU-23"],
+            loc="Riley",
+            season="May-Sep",
+            savename="Riley_summer/shape_match"
+        )
     return
 
 
 @app.cell
-def _(draw_fitness_scores, expt_isotherms, unpickle):
-    draw_fitness_scores(expt_isotherms["CAU-23"], unpickle(f"Riley_summer_weather"), other_savename="CAU-23_fitness_Riley_Summer")
+def _(draw_fitness_scores, expt_isotherms, shape_match, unpickle):
+    if shape_match.value:
+        draw_fitness_scores(expt_isotherms["CAU-23"], unpickle(f"Riley_summer_weather"), other_savename="CAU-23_fitness_Riley_Summer")
     return
 
 
@@ -3302,8 +3329,9 @@ def _(combinations, loss, minimize, np):
 
 
 @app.cell
-def _(do_shape_matching_sparse, expt_isotherms, unpickle):
-    x_opt = do_shape_matching_sparse(unpickle("Stovepipe_winter_opt_isotherm"), expt_isotherms, max_nonzero=8)
+def _(do_shape_matching_sparse, expt_isotherms, shape_match, unpickle):
+    if shape_match.value:
+        x_opt = do_shape_matching_sparse(unpickle("Stovepipe_winter_opt_isotherm"), expt_isotherms, max_nonzero=8)
     return (x_opt,)
 
 
@@ -3328,7 +3356,7 @@ def _(city_to_desert, idea_to_color, np, plt):
         color = idea_to_color[loc]
         ws = wai.water_ads(T, p_ovr_p0s)
         plt.plot(p_ovr_p0s, ws, label=f"optimal for\n{city_to_desert[loc]} Desert\n({season})", lw=3, color=color)
- 
+
         label = ""
         for mof, x in sorted(x_opt.items(), key=lambda item: item[1], reverse=True):
             label += f"{x*100:.0f}% {mof}\n"
@@ -3358,26 +3386,28 @@ def _(city_to_desert, idea_to_color, np, plt):
 
 
 @app.cell
-def _(x_opt):
-    x_opt.items()
+def _(shape_match, x_opt):
+    if shape_match.value:
+        x_opt.items()
     return
 
 
 @app.cell
-def _(draw_mixed_shape_match, expt_isotherms, unpickle, x_opt):
-    draw_mixed_shape_match(
-        unpickle("Stovepipe_winter_opt_isotherm"),
-        expt_isotherms,
-        x_opt,
-        loc="Stovepipe",
-        season="Dec-Feb",
-        savename=f"Stovepipe_winter/shape_match_{len(x_opt)}"
-    )
+def _(draw_mixed_shape_match, expt_isotherms, shape_match, unpickle, x_opt):
+    if shape_match.value:
+        draw_mixed_shape_match(
+            unpickle("Stovepipe_winter_opt_isotherm"),
+            expt_isotherms,
+            x_opt,
+            loc="Stovepipe",
+            season="Dec-Feb",
+            savename=f"Stovepipe_winter/shape_match_{len(x_opt)}"
+        )
     return
 
 
 @app.cell
-def _(expt_isotherms, mof_to_color, mof_to_marker, np, plt):
+def _(expt_isotherms, mof_to_color, mof_to_marker, np, plt, shape_match):
     def draw_mof_ads_data(expt_isotherms):
         fig, ax = plt.subplots()
 
@@ -3411,7 +3441,8 @@ def _(expt_isotherms, mof_to_color, mof_to_marker, np, plt):
 
         plt.show()
 
-    draw_mof_ads_data(expt_isotherms)
+    if shape_match.value:
+        draw_mof_ads_data(expt_isotherms)
     return
 
 
@@ -3423,8 +3454,15 @@ def _(mo):
     return
 
 
+@app.cell(hide_code=True)
+def _(mo):
+    toy_figs = mo.ui.checkbox(label="draw toy figs")
+    toy_figs
+    return (toy_figs,)
+
+
 @app.cell
-def _(mof_to_color, norm, np, plt):
+def _(mof_to_color, norm, np, plt, toy_figs):
     def viz_cVar():
         mu, sigma = 0.5, 1.5      # convention: positive values = losses
         alpha = 0.8
@@ -3459,22 +3497,24 @@ def _(mof_to_color, norm, np, plt):
         plt.savefig("cvar.pdf", format="pdf", bbox_inches="tight")
         plt.show()
 
-    viz_cVar()
+    if toy_figs.value:
+        viz_cVar()
     return
 
 
 @app.cell
-def _(ExptIsotherm):
+def _(ExptIsotherm, toy_figs):
     def get_cau23_isotherms():
         T = {"hot": 60, "cold": 25}
         return {hc: ExptIsotherm("CAU-23", T[hc]) for hc in ["hot", "cold"]}
 
-    cau_23_isotherms = get_cau23_isotherms()
+    if toy_figs.value:
+        cau_23_isotherms = get_cau23_isotherms()
     return (cau_23_isotherms,)
 
 
 @app.cell
-def _(cau_23_isotherms, np, plt):
+def _(cau_23_isotherms, np, plt, toy_figs):
     def draw_cau23_toy(isotherms):
         mof = "CAU-23"
         T = {"hot": 60, "cold": 8}
@@ -3484,7 +3524,7 @@ def _(cau_23_isotherms, np, plt):
         }
         subscript = {"hot": "d", "cold": "n"}
         id = {"hot": 32, "cold": 10}
-        
+
         p_over_p0s = np.linspace(0, 1.0, 100)
 
         fig, ax = plt.subplots(figsize=(4.75, 3.75))
@@ -3530,12 +3570,8 @@ def _(cau_23_isotherms, np, plt):
 
         plt.show()
 
-    draw_cau23_toy(cau_23_isotherms)
-    return
-
-
-@app.cell
-def _():
+    if toy_figs.value:
+        draw_cau23_toy(cau_23_isotherms)
     return
 
 
