@@ -1,6 +1,6 @@
 import marimo
 
-__generated_with = "0.23.14"
+__generated_with = "0.17.6"
 app = marimo.App(width="medium")
 
 
@@ -340,7 +340,6 @@ def _(ccrs, cfeature, city_to_coords, city_to_desert, idea_to_color, plt):
         if savename:
             plt.savefig(savename + ".pdf", format="pdf", bbox_inches="tight", pad_inches=0)
         plt.show()
-
     return (viz_cities,)
 
 
@@ -620,7 +619,6 @@ def _(T_range, idea_to_color, np, os, pd, plt):
         def all_consecutive_days(self):
             gaps = self.ads_des_conditions["date"].diff().dropna()
             return (gaps == pd.Timedelta(days=1)).all()
-
     return (WeatherData,)
 
 
@@ -685,7 +683,6 @@ def _(T_range, pd):
             if T_min < T_range[0] or T_max > T_range[1]:
                 print([T_min, T_max])
                 raise Exception("extend T_range")
-
     return (Weather,)
 
 
@@ -770,7 +767,6 @@ def _(WeatherData, np, too_many_missing):
                         n_avoid += 1
         print(f"left out: {n_avoid}/{n_tot}")
         return weather_datas
-
     return (get_weather_datas,)
 
 
@@ -878,7 +874,6 @@ def _(T_range, idea_to_color, np, plt, weather):
 
         plt.savefig(f"avg_weather_{temp_or_humid.split()[0]}.pdf", format="pdf", bbox_inches="tight")
         plt.show()
-
     return (draw_avgs,)
 
 
@@ -1049,7 +1044,6 @@ def _(comb, np):
             basis = self.basis_matrix(x)       # (m, n+1)
             val = basis @ np.asarray(bs)       # (m,)
             return val[0] if scalar_input else val
-
     return (BernPolyBasis,)
 
 
@@ -1234,7 +1228,6 @@ def _(BernPolyBasis, colors, inset_axes, np, plt, temp_colormap, w_max):
                 plt.savefig(savename + ".pdf", format="pdf")
 
             plt.show()
-
     return (WaterAdsorptionIsotherm,)
 
 
@@ -1300,7 +1293,6 @@ def _(n_day_period, np, pd):
         ).set_index(["location", "period_label"])["cum water del [kg/kg]"]
 
         return totals
-
     return (get_nday_totals,)
 
 
@@ -1317,7 +1309,6 @@ def _(np):
         val_at_risk = np.percentile(scores, alpha)
         cval_at_risk = np.mean(scores[scores <= val_at_risk])
         return val_at_risk, cval_at_risk
-
     return (var_cvar,)
 
 
@@ -1342,7 +1333,6 @@ def _(alpha, get_nday_totals, n_day_period, var_cvar):
             print("min CVaR: ", min_cvar)
 
         return period_totals, per_location_var, per_location_cvar, min_cvar
-
     return (score_fitness,)
 
 
@@ -1413,7 +1403,6 @@ def _(
         else:
             plt.savefig(weather.tag + "/best_wai_water_del_distn.pdf", format="pdf")
         plt.show()
-
     return (draw_fitness_scores,)
 
 
@@ -1587,7 +1576,6 @@ def _(
             ax_top.axvline(fitness, linestyle="--", color=the_colors[w])
 
         plt.show()
-
     return (compare_wais,)
 
 
@@ -1662,7 +1650,6 @@ def _(my_colors, np, p_ovr_p0_ticks, plt):
                 savename + ".pdf", format="pdf",  bbox_inches="tight"
             )
         plt.show()
-
     return (viz_wais,)
 
 
@@ -1683,7 +1670,6 @@ def _(WaterAdsorptionIsotherm, np):
         else:
             wai.endow_random_isotherm()
         return wai
-
     return (random_birth,)
 
 
@@ -1719,7 +1705,6 @@ def _(np):
         wai.bs[wai.bs < 0.0] = 0.0
         wai.bs[wai.bs > wai.w_max] = wai.w_max
         wai.bs[-1] = wai.w_max
-
     return (mutate,)
 
 
@@ -1753,7 +1738,6 @@ def _(np):
         id_a = ids_tourney[ids_winners[0]]
         id_b = ids_tourney[ids_winners[1]]
         return id_a, id_b
-
     return (run_tournament,)
 
 
@@ -1779,7 +1763,6 @@ def _(WaterAdsorptionIsotherm, np):
         return WaterAdsorptionIsotherm(
             wai_a.n, bs=alpha * wai_a.bs + (1 - alpha) * wai_b.bs
         )
-
     return (random_combination,)
 
 
@@ -1823,7 +1806,6 @@ def _(np):
         wai.bs = np.sort(wai.bs)
 
         return wai
-
     return (random_cross_over,)
 
 
@@ -1900,7 +1882,6 @@ def _(score_fitness):
                 fitness = new_fitness
             else:
                 break 
-
     return (ls_stepify,)
 
 
@@ -2005,7 +1986,6 @@ def _(
             mutate(new_wais[id], eps)
 
         return new_wais
-
     return (evolve,)
 
 
@@ -2013,7 +1993,6 @@ def _(
 def _(random_birth):
     def gen_initial_pop(pop_size, n):
         return [random_birth(n) for _ in range(pop_size)]
-
     return (gen_initial_pop,)
 
 
@@ -2085,7 +2064,6 @@ def _(evolve, gen_initial_pop, ls_stepify, np, score_fitness):
         best_period_totals, _, _, best_fitness = score_fitness(best_wai, weather, verbose=True)
 
         return fitnesses_gen, best_wai_gen, best_wai, best_period_totals, best_fitness
-
     return (do_evolution,)
 
 
@@ -2186,6 +2164,7 @@ def _(alpha, dropdown, fitnesses_gen, np, pd, plt, sns, weather):
         if not dropdown.value == "Riley":
             plt.xticks(2*np.arange(int(data["generation"].max()/2)+1))
         plt.ylim(ymin=0)
+        plt.tick_params(axis='x', which='minor', bottom=False, top=False)
         plt.tight_layout()
         plt.savefig(
              weather.tag + "/fitness_progress.pdf", format="pdf"
@@ -2287,7 +2266,6 @@ def _(pickle):
         with open(pf_name, 'wb') as pf:
             pickle.dump(var, pf)
             print("saved in: ", pf_name)
-
     return (pickle_this,)
 
 
@@ -2454,7 +2432,6 @@ def _(T_range, colors, np, p_ovr_p0_ticks, plt, temp_colormap):
                 savename + ".pdf", format="pdf", bbox_inches="tight"
             )
         plt.show()
-
     return (viz_water_del,)
 
 
@@ -2651,7 +2628,6 @@ def _(
 
         plt.savefig(weather.tag + "/comparison_w_step.pdf", format="pdf")
         plt.show()
-
     return (compare_best_wai_and_best_wai_step,)
 
 
@@ -2701,7 +2677,6 @@ def _(pickle):
         with open(pf_name, 'rb') as pf:
             var = pickle.load(pf)
         return var
-
     return (unpickle,)
 
 
@@ -2766,7 +2741,6 @@ def _(
         plt.tight_layout()
         plt.savefig("comparison/compare_fitnesses.pdf", format="pdf")
         plt.show()
-
     return (compare_all_wai_fitness,)
 
 
@@ -2808,7 +2782,6 @@ def _(city_to_desert, idea_to_color, np, p_ovr_p0_ticks, plt):
             "comparison/best_wai_comparison.pdf", format="pdf", bbox_inches="tight"
         )
         plt.show()
-
     return (compare_best_wais,)
 
 
@@ -2974,7 +2947,6 @@ def _(
         plt.tight_layout()
         plt.savefig(f"comparison/{comparison_case}_fitness.pdf", format="pdf")
         plt.show()
-
     return (viz_mismatch_fitness,)
 
 
@@ -3132,7 +3104,6 @@ def _(IsotonicRegression, R, np, pd):
                 conditions["des P/P0"].to_numpy(),
             )
             return np.where(w_ads > w_des, w_ads - w_des, 0.0)
-
     return (ExptIsotherm,)
 
 
@@ -3204,7 +3175,6 @@ def _(city_to_desert, idea_to_color, mof_to_color, np, plt):
             plt.savefig(savename + ".pdf", format="pdf", bbox_inches="tight")
 
         plt.show()
-
     return (draw_shape_match,)
 
 
@@ -3260,7 +3230,6 @@ def _(np):
         n_target = wai.water_ads(T, p_ovr_p0s)
 
         return np.sum((n_mix - n_target) ** 2)
-
     return (loss,)
 
 
@@ -3324,7 +3293,6 @@ def _(combinations, loss, minimize, np):
             print(f"  {mof}: {x_opt[mof]:.4f}")
 
         return fits[0][1]
-
     return (do_shape_matching_sparse,)
 
 
@@ -3381,7 +3349,6 @@ def _(city_to_desert, idea_to_color, np, plt):
             plt.savefig(savename + ".pdf", format="pdf", bbox_inches="tight")
 
         plt.show()
-
     return (draw_mixed_shape_match,)
 
 
