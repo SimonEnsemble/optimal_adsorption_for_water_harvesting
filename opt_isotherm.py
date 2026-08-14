@@ -1323,10 +1323,13 @@ def _(alpha, get_nday_totals, n_day_period, var_cvar):
             val_at_risk, cval_at_risk = var_cvar(group.values, alpha)
             if verbose:
                 print(loc)
+                print("\tmean: ", group.mean())
                 print("\tvar: ", val_at_risk)
                 print("\tcvar: ", cval_at_risk)
             per_location_var[loc] = val_at_risk
             per_location_cvar[loc] = cval_at_risk
+
+    
 
         min_cvar = min(per_location_cvar.values())
         if verbose:
@@ -1440,6 +1443,8 @@ def _(
             }
         )
         period_totals["month"] = period_totals["period_label"].str.split("-").str[1].astype(int)
+
+        print("mean cumulative water delivery:", period_totals["cumulative water delivery\n[kg H$_2$O/kg sorbent]"].mean())
 
         fig, ax = plt.subplots()
 
@@ -1840,14 +1845,13 @@ def _(score_fitness):
     # increase capacity at high pressure until fitness decreases
     # decrease capacity at low pressure until fitness decreases
     def ls_stepify(wai, weather, verbose=False): 
-        new_wai = wai.copy()
-
         fitness = score_fitness(wai, weather)[-1]
         if verbose:
             print("---local search---")
             print("current fitness: ", fitness)
 
         # max out capacity at high p/p0 until fitness decreases
+        new_wai = wai.copy()
         for i in range(1, wai.n): # walk backwards thru array
             new_wai.bs[-i:] = wai.w_max
             new_fitness = score_fitness(new_wai, weather)[-1]
@@ -1866,6 +1870,7 @@ def _(score_fitness):
                 break 
 
         # destroy capacity at low p/p0 until fitness decreases
+        new_wai = wai.copy()
         for i in range(1, wai.n): # walk forwards thru array
             new_wai.bs[:i] = 0.0
             new_fitness = score_fitness(new_wai, weather)[-1]
@@ -2047,7 +2052,7 @@ def _(evolve, gen_initial_pop, ls_stepify, np, score_fitness):
 
         # store progress
         fitnesses_gen = [fitnesses]
-        best_wai_gen = [wais[np.argmax(fitnesses)]]
+        best_wai_gen = [wais[np.argmax(fitnesses)].copy()]
 
         # evolve over generations
         for g in range(1, n_generations):
@@ -2095,10 +2100,20 @@ def _(mo):
 
 
 @app.cell
-def _(best_wai, dropdown, idea_to_color, weather):
+def _(weather):
+    weather.tag
+    return
+
+
+@app.cell
+def _(alpha, best_wai, dropdown, idea_to_color, weather):
+    _savename = weather.tag + f"/best_wai"
+    if weather.tag == "mix_summer":
+        _savename += f"_alpha_{1-alpha}"
+    
     best_wai.draw(
         boundary_color=idea_to_color["mix"] if "mix" in dropdown.value else None,
-        savename=weather.tag + f"/best_wai"
+        savename=_savename
     )
     return
 
@@ -3223,9 +3238,7 @@ def _(np):
 
         p_ovr_p0s = np.linspace(0.0001, 0.999, 35)
 
-        n_mix = np.sum(
-            x[i] * expt_isotherm.water_ads(T, p_ovr_p0s) for i, expt_isotherm in enumerate(expt_isotherms)
-        )
+        n_mix = sum(x[i] * iso.water_ads(T, p_ovr_p0s) for i, iso in enumerate(expt_isotherms))
 
         n_target = wai.water_ads(T, p_ovr_p0s)
 
