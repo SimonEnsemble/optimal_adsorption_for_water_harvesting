@@ -1,6 +1,6 @@
 import marimo
 
-__generated_with = "0.17.6"
+__generated_with = "0.24.0"
 app = marimo.App(width="medium")
 
 
@@ -223,9 +223,12 @@ def _(mo):
 
 
 @app.cell
-def _(np):
+def _(dropdown_time, np):
     # temperature range
-    T_range = [-20.0, 70.0] # deg C
+    if "extend" in dropdown_time.value:
+        T_range = [-30.0, 70.0] # deg C
+    else:
+        T_range = [-20.0, 70.0] # deg C
 
     # ticks for plots
     T_ticks = np.linspace(T_range[0], T_range[1], 7)
@@ -340,6 +343,7 @@ def _(ccrs, cfeature, city_to_coords, city_to_desert, idea_to_color, plt):
         if savename:
             plt.savefig(savename + ".pdf", format="pdf", bbox_inches="tight", pad_inches=0)
         plt.show()
+
     return (viz_cities,)
 
 
@@ -619,6 +623,7 @@ def _(T_range, idea_to_color, np, os, pd, plt):
         def all_consecutive_days(self):
             gaps = self.ads_des_conditions["date"].diff().dropna()
             return (gaps == pd.Timedelta(days=1)).all()
+
     return (WeatherData,)
 
 
@@ -683,6 +688,7 @@ def _(T_range, pd):
             if T_min < T_range[0] or T_max > T_range[1]:
                 print([T_min, T_max])
                 raise Exception("extend T_range")
+
     return (Weather,)
 
 
@@ -711,7 +717,7 @@ def _(mo):
 @app.cell(hide_code=True)
 def _(mo):
     dropdown_time = mo.ui.dropdown(
-        options=["summer", "all_yr", "winter"], 
+        options=["summer", "summer_extend_1", "summer_extend_2", "summer_extend_3", "summer_extend_4", "summer_extend_5",  "summer_extend_6",  "summer_extend_7", "winter", "all_yr"], 
         value="summer", label="choose season"
     )
     dropdown_time
@@ -767,6 +773,7 @@ def _(WeatherData, np, too_many_missing):
                         n_avoid += 1
         print(f"left out: {n_avoid}/{n_tot}")
         return weather_datas
+
     return (get_weather_datas,)
 
 
@@ -775,6 +782,13 @@ def _(Weather, dropdown, dropdown_time, get_weather_datas, mixed_locations):
     season_to_months = {
         "all_yr": list(range(1, 13)),
         "summer": [5, 6, 7, 8, 9],
+        "summer_extend_1": [4, 5, 6, 7, 8, 9],
+        "summer_extend_2": [4, 5, 6, 7, 8, 9, 10],
+        "summer_extend_3": [3, 4, 5, 6, 7, 8, 9, 10],
+        "summer_extend_4": [3, 4, 5, 6, 7, 8, 9, 10, 11],
+        "summer_extend_5": [2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
+        "summer_extend_6": [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+        "summer_extend_7": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
         "summer_met": [6, 7, 8], # meterological
         "winter": [12, 1, 2]
     }
@@ -796,7 +810,7 @@ def _(Weather, dropdown, dropdown_time, get_weather_datas, mixed_locations):
 
     weather = build_weather(season_to_months[dropdown_time.value])
     weather.ads_des_conditions
-    return (weather,)
+    return season_to_months, weather
 
 
 @app.cell
@@ -874,6 +888,7 @@ def _(T_range, idea_to_color, np, plt, weather):
 
         plt.savefig(f"avg_weather_{temp_or_humid.split()[0]}.pdf", format="pdf", bbox_inches="tight")
         plt.show()
+
     return (draw_avgs,)
 
 
@@ -1038,12 +1053,16 @@ def _(comb, np):
             returns: scalar (if x was scalar) or array, shape (m,)
             """
             x = np.asarray(x, dtype=float)
-            assert np.all((x >= 0.0) | np.isnan(x))
-            assert np.all((x <= 1.0) | np.isnan(x))
+            x[x > 1.0] = 1.0
+            if not np.all((x >= 0.0) | np.isnan(x)):
+                raise Exception("humidity less than zero")
+            if not np.all((x <= 1.0) | np.isnan(x)):
+                raise Exception("humdiity greater than one")
             scalar_input = (x.ndim == 0)
             basis = self.basis_matrix(x)       # (m, n+1)
             val = basis @ np.asarray(bs)       # (m,)
             return val[0] if scalar_input else val
+
     return (BernPolyBasis,)
 
 
@@ -1228,6 +1247,7 @@ def _(BernPolyBasis, colors, inset_axes, np, plt, temp_colormap, w_max):
                 plt.savefig(savename + ".pdf", format="pdf")
 
             plt.show()
+
     return (WaterAdsorptionIsotherm,)
 
 
@@ -1293,12 +1313,19 @@ def _(n_day_period, np, pd):
         ).set_index(["location", "period_label"])["cum water del [kg/kg]"]
 
         return totals
+
     return (get_nday_totals,)
 
 
 @app.cell
+def _(weather):
+    weather.ads_des_conditions
+    return
+
+
+@app.cell
 def _(get_nday_totals, wai, weather):
-    totals = get_nday_totals(wai, weather, 10, seed=3)
+    totals = get_nday_totals(wai, weather, seed=3)
     totals
     return
 
@@ -1309,6 +1336,7 @@ def _(np):
         val_at_risk = np.percentile(scores, alpha)
         cval_at_risk = np.mean(scores[scores <= val_at_risk])
         return val_at_risk, cval_at_risk
+
     return (var_cvar,)
 
 
@@ -1329,13 +1357,12 @@ def _(alpha, get_nday_totals, n_day_period, var_cvar):
             per_location_var[loc] = val_at_risk
             per_location_cvar[loc] = cval_at_risk
 
-    
-
         min_cvar = min(per_location_cvar.values())
         if verbose:
             print("min CVaR: ", min_cvar)
 
         return period_totals, per_location_var, per_location_cvar, min_cvar
+
     return (score_fitness,)
 
 
@@ -1406,6 +1433,7 @@ def _(
         else:
             plt.savefig(weather.tag + "/best_wai_water_del_distn.pdf", format="pdf")
         plt.show()
+
     return (draw_fitness_scores,)
 
 
@@ -1581,6 +1609,7 @@ def _(
             ax_top.axvline(fitness, linestyle="--", color=the_colors[w])
 
         plt.show()
+
     return (compare_wais,)
 
 
@@ -1655,6 +1684,7 @@ def _(my_colors, np, p_ovr_p0_ticks, plt):
                 savename + ".pdf", format="pdf",  bbox_inches="tight"
             )
         plt.show()
+
     return (viz_wais,)
 
 
@@ -1675,6 +1705,7 @@ def _(WaterAdsorptionIsotherm, np):
         else:
             wai.endow_random_isotherm()
         return wai
+
     return (random_birth,)
 
 
@@ -1710,6 +1741,7 @@ def _(np):
         wai.bs[wai.bs < 0.0] = 0.0
         wai.bs[wai.bs > wai.w_max] = wai.w_max
         wai.bs[-1] = wai.w_max
+
     return (mutate,)
 
 
@@ -1743,6 +1775,7 @@ def _(np):
         id_a = ids_tourney[ids_winners[0]]
         id_b = ids_tourney[ids_winners[1]]
         return id_a, id_b
+
     return (run_tournament,)
 
 
@@ -1768,6 +1801,7 @@ def _(WaterAdsorptionIsotherm, np):
         return WaterAdsorptionIsotherm(
             wai_a.n, bs=alpha * wai_a.bs + (1 - alpha) * wai_b.bs
         )
+
     return (random_combination,)
 
 
@@ -1811,6 +1845,7 @@ def _(np):
         wai.bs = np.sort(wai.bs)
 
         return wai
+
     return (random_cross_over,)
 
 
@@ -1887,6 +1922,7 @@ def _(score_fitness):
                 fitness = new_fitness
             else:
                 break 
+
     return (ls_stepify,)
 
 
@@ -1991,6 +2027,7 @@ def _(
             mutate(new_wais[id], eps)
 
         return new_wais
+
     return (evolve,)
 
 
@@ -1998,6 +2035,7 @@ def _(
 def _(random_birth):
     def gen_initial_pop(pop_size, n):
         return [random_birth(n) for _ in range(pop_size)]
+
     return (gen_initial_pop,)
 
 
@@ -2069,12 +2107,13 @@ def _(evolve, gen_initial_pop, ls_stepify, np, score_fitness):
         best_period_totals, _, _, best_fitness = score_fitness(best_wai, weather, verbose=True)
 
         return fitnesses_gen, best_wai_gen, best_wai, best_period_totals, best_fitness
+
     return (do_evolution,)
 
 
 @app.cell
 def _(do_evolution, run_evol_cbox, weather):
-    is_toy_scenario = "Riley" in weather.tag
+    is_toy_scenario = ("Riley" in weather.tag) and not ("extend" in weather.tag)
 
     if is_toy_scenario:
         print("TOY SCENARIO")
@@ -2110,7 +2149,7 @@ def _(alpha, best_wai, dropdown, idea_to_color, weather):
     _savename = weather.tag + f"/best_wai"
     if weather.tag == "mix_summer":
         _savename += f"_alpha_{1-alpha}"
-    
+
     best_wai.draw(
         boundary_color=idea_to_color["mix"] if "mix" in dropdown.value else None,
         savename=_savename
@@ -2281,6 +2320,7 @@ def _(pickle):
         with open(pf_name, 'wb') as pf:
             pickle.dump(var, pf)
             print("saved in: ", pf_name)
+
     return (pickle_this,)
 
 
@@ -2447,6 +2487,7 @@ def _(T_range, colors, np, p_ovr_p0_ticks, plt, temp_colormap):
                 savename + ".pdf", format="pdf", bbox_inches="tight"
             )
         plt.show()
+
     return (viz_water_del,)
 
 
@@ -2643,6 +2684,7 @@ def _(
 
         plt.savefig(weather.tag + "/comparison_w_step.pdf", format="pdf")
         plt.show()
+
     return (compare_best_wai_and_best_wai_step,)
 
 
@@ -2692,6 +2734,7 @@ def _(pickle):
         with open(pf_name, 'rb') as pf:
             var = pickle.load(pf)
         return var
+
     return (unpickle,)
 
 
@@ -2756,6 +2799,7 @@ def _(
         plt.tight_layout()
         plt.savefig("comparison/compare_fitnesses.pdf", format="pdf")
         plt.show()
+
     return (compare_all_wai_fitness,)
 
 
@@ -2797,6 +2841,7 @@ def _(city_to_desert, idea_to_color, np, p_ovr_p0_ticks, plt):
             "comparison/best_wai_comparison.pdf", format="pdf", bbox_inches="tight"
         )
         plt.show()
+
     return (compare_best_wais,)
 
 
@@ -2962,6 +3007,7 @@ def _(
         plt.tight_layout()
         plt.savefig(f"comparison/{comparison_case}_fitness.pdf", format="pdf")
         plt.show()
+
     return (viz_mismatch_fitness,)
 
 
@@ -3119,6 +3165,7 @@ def _(IsotonicRegression, R, np, pd):
                 conditions["des P/P0"].to_numpy(),
             )
             return np.where(w_ads > w_des, w_ads - w_des, 0.0)
+
     return (ExptIsotherm,)
 
 
@@ -3190,6 +3237,7 @@ def _(city_to_desert, idea_to_color, mof_to_color, np, plt):
             plt.savefig(savename + ".pdf", format="pdf", bbox_inches="tight")
 
         plt.show()
+
     return (draw_shape_match,)
 
 
@@ -3243,6 +3291,7 @@ def _(np):
         n_target = wai.water_ads(T, p_ovr_p0s)
 
         return np.sum((n_mix - n_target) ** 2)
+
     return (loss,)
 
 
@@ -3306,13 +3355,14 @@ def _(combinations, loss, minimize, np):
             print(f"  {mof}: {x_opt[mof]:.4f}")
 
         return fits[0][1]
+
     return (do_shape_matching_sparse,)
 
 
 @app.cell
 def _(do_shape_matching_sparse, expt_isotherms, shape_match, unpickle):
     if shape_match.value:
-        x_opt = do_shape_matching_sparse(unpickle("Stovepipe_winter_opt_isotherm"), expt_isotherms, max_nonzero=8)
+        x_opt = do_shape_matching_sparse(unpickle("Stovepipe_winter_opt_isotherm"), expt_isotherms, max_nonzero=5)
     return (x_opt,)
 
 
@@ -3339,7 +3389,11 @@ def _(city_to_desert, idea_to_color, np, plt):
         plt.plot(p_ovr_p0s, ws, label=f"optimal for\n{city_to_desert[loc]} Desert\n({season})", lw=3, color=color)
 
         label = ""
-        for mof, x in sorted(x_opt.items(), key=lambda item: item[1], reverse=True):
+        x_opt_nice = sorted(x_opt.items(), key=lambda item: item[1], reverse=True)
+        x_nice = round_to_sum([x[1] for x in x_opt_nice])
+        mofs_nice = [x[0] for x in x_opt_nice]
+        print("# MOFs: ", len(x_nice))
+        for mof, x in zip(mofs_nice, x_nice):
             label += f"{x*100:.0f}% {mof}\n"
         label = label[:-1]
         ax.plot(p_ovr_p0s, n_mix, color="black", lw=3, zorder=10, label=label)
@@ -3362,6 +3416,7 @@ def _(city_to_desert, idea_to_color, np, plt):
             plt.savefig(savename + ".pdf", format="pdf", bbox_inches="tight")
 
         plt.show()
+
     return (draw_mixed_shape_match,)
 
 
@@ -3369,6 +3424,45 @@ def _(city_to_desert, idea_to_color, np, plt):
 def _(shape_match, x_opt):
     if shape_match.value:
         x_opt.items()
+    return
+
+
+@app.function
+def round_to_sum(values, digits=2):
+    scale = 10 ** digits
+    scaled = [v * scale for v in values]
+    floors = [int(x) for x in scaled]
+    leftover = round(sum(scaled)) - sum(floors)
+    order = sorted(range(len(values)),
+                   key=lambda i: scaled[i] - floors[i],
+                   reverse=True)
+    for i in order[:leftover]:
+        floors[i] += 1
+    return [f / scale for f in floors]
+
+
+@app.cell
+def _(
+    do_shape_matching_sparse,
+    draw_mixed_shape_match,
+    expt_isotherms,
+    shape_match,
+    unpickle,
+    x_opt,
+):
+    # summer mix
+    if shape_match.value:
+        _wai = unpickle("mix_summer_opt_isotherm")
+        _x_opt = do_shape_matching_sparse(_wai, expt_isotherms, max_nonzero=2)
+    
+        draw_mixed_shape_match(
+            _wai,
+            expt_isotherms,
+            _x_opt,
+            loc="mix",
+            season="May-Sep",
+            savename=f"mix_summer/shape_match_{len(x_opt)}"
+        )
     return
 
 
@@ -3552,6 +3646,41 @@ def _(cau_23_isotherms, np, plt, toy_figs):
 
     if toy_figs.value:
         draw_cau23_toy(cau_23_isotherms)
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    # S-broadening with weather
+    """)
+    return
+
+
+@app.cell
+def _(calendar, season_to_months, sns, unpickle, viz_wais):
+    def viz_broadening(location):
+        seasons = ["summer"] + [f"summer_extend_{i}" for i in range(1, 8)]
+        labels = []
+        for season in seasons:
+            mo_start = calendar.month_abbr[min(season_to_months[season])]
+            mo_end = calendar.month_abbr[max(season_to_months[season])]
+            labels.append(f"{mo_start}-{mo_end}")
+
+        best_wais = [unpickle(f"{location}_{season}_opt_isotherm") for season in seasons]
+        viz_wais(
+            best_wais,
+            material_labels=labels,
+            the_colors=sns.color_palette("mako", len(seasons)),
+            # savename=weather.tag + f"/opt_Vs_opt_S"
+        )
+    
+    viz_broadening("Riley")
+    return
+
+
+@app.cell
+def _():
     return
 
 
