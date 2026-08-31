@@ -3454,7 +3454,7 @@ def _(
     if shape_match.value:
         _wai = unpickle("mix_summer_opt_isotherm")
         _x_opt = do_shape_matching_sparse(_wai, expt_isotherms, max_nonzero=2)
-    
+
         draw_mixed_shape_match(
             _wai,
             expt_isotherms,
@@ -3657,30 +3657,100 @@ def _(mo):
     return
 
 
+@app.cell(hide_code=True)
+def _(mo):
+    viz_broadening = mo.ui.checkbox(label="broadening S-shape?")
+    viz_broadening
+    return (viz_broadening,)
+
+
 @app.cell
-def _(calendar, season_to_months, sns, unpickle, viz_wais):
-    def viz_broadening(location):
+def _(calendar, season_to_months, sns):
+    def get_broadening_seasons_labels_colors():
         seasons = ["summer"] + [f"summer_extend_{i}" for i in range(1, 8)]
+
         labels = []
         for season in seasons:
             mo_start = calendar.month_abbr[min(season_to_months[season])]
             mo_end = calendar.month_abbr[max(season_to_months[season])]
             labels.append(f"{mo_start}-{mo_end}")
 
+        colors = sns.color_palette("mako", len(seasons))
+
+        return seasons, labels, colors
+
+    return (get_broadening_seasons_labels_colors,)
+
+
+@app.cell
+def _(
+    get_broadening_seasons_labels_colors,
+    unpickle,
+    viz_broadening,
+    viz_wais,
+):
+    def viz_broadening_isotherm(location):
+        seasons, labels, colors = get_broadening_seasons_labels_colors()
+
         best_wais = [unpickle(f"{location}_{season}_opt_isotherm") for season in seasons]
         viz_wais(
             best_wais,
             material_labels=labels,
-            the_colors=sns.color_palette("mako", len(seasons)),
+            the_colors=colors,
             # savename=weather.tag + f"/opt_Vs_opt_S"
         )
-    
-    viz_broadening("Riley")
+
+    if viz_broadening.value:
+        viz_broadening_isotherm("Riley")
     return
 
 
 @app.cell
-def _():
+def _(
+    gaussian_kde,
+    get_broadening_seasons_labels_colors,
+    np,
+    plt,
+    unpickle,
+    viz_broadening,
+):
+    def viz_broadening_weather(location, incl_scatter=False):
+        seasons, labels, colors = get_broadening_seasons_labels_colors()
+        weathers = [unpickle(f"{location}_{season}_weather") for season in seasons]
+
+        fig, ax = plt.subplots()
+        for (weather, label, color) in zip(weathers, seasons, colors):
+            x = weather.ads_des_conditions["ads P/P0"].to_numpy()
+            y = weather.ads_des_conditions["des P/P0"].to_numpy()
+
+            kde = gaussian_kde(np.vstack([x, y]))
+    
+            pad = 0.25
+            xg = np.linspace(0, 1, 300)
+            yg = np.linspace(0, 1, 300)
+            X, Y = np.meshgrid(xg, yg)
+            Z = kde(np.vstack([X.ravel(), Y.ravel()])).reshape(X.shape)
+    
+            cell = (xg[1] - xg[0]) * (yg[1] - yg[0])
+            print(f"mass on grid: {Z.sum() * cell:.4f}")   # want ≈ 1.0
+    
+            z = np.sort(Z.ravel())[::-1]
+            c = np.cumsum(z)
+            level = z[np.searchsorted(c, 0.8 * c[-1])]
+
+            if incl_scatter:
+                ax.scatter(x, y, s=8, alpha=0.1, color=color)
+            cs = ax.contour(X, Y, Z, levels=[level], colors=color, linewidths=1.5)
+
+        plt.xlim([0, 1])
+        plt.ylim([0, 1])
+        plt.xlabel("water-capture $p/p_0$")
+        plt.ylabel("water-release $p/p_0$")
+        ax.set_aspect('equal', 'box')
+        plt.show()
+
+    if viz_broadening.value:
+        viz_broadening_weather("Riley", incl_scatter=False)
     return
 
 
