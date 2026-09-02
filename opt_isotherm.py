@@ -154,12 +154,12 @@ def water_p0(T):
         B = 2354.731
         C = 7.559
     # T in [273., 303] K
-    elif T+273.15 > 273.0 and T+273.15 > 303.0:
+    elif T+273.15 > 273.0 and T+273.15 < 303.0:
         A = 5.40221
         B = 1838.675
         C = -31.737
     # T in [255.9, 373.] K
-    elif (T+273.15 > 255.9 and T+273.15 < 373.0) or T < 255.9: # low temp
+    elif (T+273.15 > 255.9 and T+273.15 < 373.0) or T+273 < 255.9: # low temp
         A = 4.6543
         B = 1435.264
         C = -64.848
@@ -176,7 +176,7 @@ def water_p0(T):
 
 @app.cell
 def _():
-    water_p0(100.0) # around 1 ATM
+    water_p0(99.8) # around 1 ATM
     return
 
 
@@ -189,15 +189,15 @@ def _():
 @app.cell
 def _(np, plt):
     def viz_water_p0():
-        Ts = np.linspace(-5.0, 100.0, 250) # deg C
+        Ts = np.linspace(-5.0, 99.8, 250) # deg C
         plt.figure()
         plt.xlabel("T [°C]")
         plt.ylabel("P* [bar]")
         plt.plot(Ts, [water_p0(T_i) for T_i in Ts], linewidth=3)
-        plt.scatter(100.0, water_p0(100.0))
+        plt.scatter(100.0, water_p0(99.8))
         plt.show()
 
-    # viz_water_p0()
+    viz_water_p0()
     return
 
 
@@ -226,9 +226,9 @@ def _(mo):
 def _(dropdown_time, np):
     # temperature range
     if "extend" in dropdown_time.value:
-        T_range = [-30.0, 70.0] # deg C
+        T_range = [-30.0, 80.0] # deg C
     else:
-        T_range = [-20.0, 70.0] # deg C
+        T_range = [-20.0, 80.0] # deg C
 
     # ticks for plots
     T_ticks = np.linspace(T_range[0], T_range[1], 7)
@@ -371,7 +371,7 @@ def _(T_range, idea_to_color, np, os, pd, plt):
                 print("\tnighttime adsorption hr: ", time_to_hour["night"])
                 print("\tdaytime harvest hr: ",      time_to_hour["day"])
 
-            self.relevant_weather_cols = ["T_HR_AVG", "RH_HR_AVG", "SUR_TEMP", "SUR_RH_HR_AVG"]
+            self.relevant_weather_cols = ["T_HR_AVG", "RH_HR_AVG", "SUR_TEMP"]
 
             self.verbose = verbose
             self.raw_data = None
@@ -381,7 +381,6 @@ def _(T_range, idea_to_color, np, os, pd, plt):
             self._read_raw_data()
             self._filter_missing()
             self._process_datetimes()
-            self._infer_surface_RH()
             self._prune_raw_data()
 
             self.time_to_hour = time_to_hour
@@ -456,28 +455,10 @@ def _(T_range, idea_to_color, np, os, pd, plt):
                 ["datetime"] + self.relevant_weather_cols
             ]
 
-        def _infer_surface_RH(self):
-            # compute new relative humidity at surface temperature, 
-            #     for heated air
-            # partial pressure @ ambient:
-            #      RH * p0(T)
-            #         =
-            # partial pressure @ surface:
-            #   SUR_RH * p0(SUR_T)
-            # => SUR_RH = RH * p0(T) / p0(SUR_T)
-            if self.all_missing:
-                return
-
-            self.raw_data["SUR_RH_HR_AVG"] = self.raw_data.apply(
-                lambda day: day["RH_HR_AVG"] * water_p0(day["T_HR_AVG"])
-                    / water_p0(day["SUR_TEMP"]), 
-                axis=1
-            )
-
         def _attach_ads_des_conditions(self):
             cols_to_put = [
                 'date', 'ads T [°C]', 'ads P/P0', 
-                'des T [°C]', 'des P/P0'
+                'des T [°C]', 'des P/P0', 'phi_day_in', 'phi_day_out', 'day_SUR_TEMP', 'day_T_HR_AVG'
             ]
 
             if self.all_missing:
@@ -504,18 +485,41 @@ def _(T_range, idea_to_color, np, os, pd, plt):
             )
 
             self.ads_des_conditions.sort_values(by="date", inplace=True)
+        
+            ###
+            #   compute MOF daytime temperature
+            ###
+            alpha = 0.9 # solar absorbance of solar absorber
+            alpha_sand = 0.6
+            self.ads_des_conditions['des T [°C]'] = self.ads_des_conditions['day_T_HR_AVG'] + alpha / alpha_sand * (
+                self.ads_des_conditions['day_SUR_TEMP'] - self.ads_des_conditions['day_T_HR_AVG']
+            )
+
+            ###
+            #   compute daytime RH inside harvester
+            ###
+            # saturation pressure at condenser temperature = ambient air temperature
+            p_sat_condenser_temp = np.array([water_p0(T) for T in self.ads_des_conditions['day_T_HR_AVG']])
+            # saturation pressure at MOF temperature
+            p_sat_MOF_temp       = np.array([water_p0(T) for T in self.ads_des_conditions['des T [°C]']])
+
+            # vapor pressure in ambient air
+            p_v_ambient = self.ads_des_conditions['day_RH_HR_AVG'] / 100 * p_sat_condenser_temp
+        
+            self.ads_des_conditions['phi_day_in']  = p_v_ambient           / p_sat_MOF_temp
+            self.ads_des_conditions['phi_day_out'] = p_sat_condenser_temp  / p_sat_MOF_temp
+        
+            self.ads_des_conditions['des P/P0'] = (self.ads_des_conditions['phi_day_in'] + self.ads_des_conditions['phi_day_out']) / 2 * 100
 
             self.ads_des_conditions = self.ads_des_conditions.rename(
                 columns=
                 {
                     # adsorptin conditions (night)
                     "night_T_HR_AVG": 'ads T [°C]',
-                    "night_RH_HR_AVG": 'ads P/P0',
-                    # desorption conditions (day)
-                    "day_SUR_TEMP": 'des T [°C]',
-                    "day_SUR_RH_HR_AVG": 'des P/P0'
+                    "night_RH_HR_AVG": 'ads P/P0'
                 }
             )
+        
             for rh_col in ['des P/P0', 'ads P/P0']:
                 self.ads_des_conditions[rh_col] = (
                     self.ads_des_conditions[rh_col] / 100.0
@@ -565,7 +569,6 @@ def _(T_range, idea_to_color, np, os, pd, plt):
                 self.raw_data["datetime"], self.raw_data["SUR_TEMP"], 
                 label="near-surface air", color="gray", linewidth=2, linestyle="--"
             )
-
 
             ###
             #   relative humidity
@@ -625,12 +628,6 @@ def _(T_range, idea_to_color, np, os, pd, plt):
             return (gaps == pd.Timedelta(days=1)).all()
 
     return (WeatherData,)
-
-
-@app.cell
-def _(wdata):
-    wdata.ads_des_conditions["date"]
-    return
 
 
 @app.cell
@@ -708,7 +705,7 @@ def _(mo):
 
     dropdown = mo.ui.dropdown(
         options=["Yuma", "Riley", "Stovepipe", "Mercury", "Socorro", "Utqiagvik", "mix"], 
-        value="mix", label="choose location"
+        value="Riley", label="choose location"
     )
     dropdown
     return dropdown, mixed_locations
@@ -2125,7 +2122,7 @@ def _(do_evolution, run_evol_cbox, weather):
     n = 50
     if run_evol_cbox.value:
         fitnesses_gen, best_wai_gen, best_wai, best_period_totals, best_fitness = do_evolution(
-            weather, n_generations, pop_size, n, stepify_prob=0.05 if is_toy_scenario else 0.2, seed=12
+            weather, n_generations, pop_size, n, stepify_prob=0.05 if is_toy_scenario else 0.2, seed=10
         )
     return best_fitness, best_wai, best_wai_gen, fitnesses_gen, n
 
@@ -3665,6 +3662,12 @@ def _(mo):
 
 
 @app.cell
+def _():
+    broadening_loc = "Riley"
+    return (broadening_loc,)
+
+
+@app.cell
 def _(calendar, season_to_months, sns):
     def get_broadening_seasons_labels_colors():
         seasons = ["summer"] + [f"summer_extend_{i}" for i in range(1, 8)]
@@ -3684,6 +3687,7 @@ def _(calendar, season_to_months, sns):
 
 @app.cell
 def _(
+    broadening_loc,
     get_broadening_seasons_labels_colors,
     unpickle,
     viz_broadening,
@@ -3701,12 +3705,13 @@ def _(
         )
 
     if viz_broadening.value:
-        viz_broadening_isotherm("Riley")
+        viz_broadening_isotherm(broadening_loc)
     return
 
 
 @app.cell
 def _(
+    broadening_loc,
     gaussian_kde,
     get_broadening_seasons_labels_colors,
     np,
@@ -3750,7 +3755,12 @@ def _(
         plt.show()
 
     if viz_broadening.value:
-        viz_broadening_weather("Riley", incl_scatter=False)
+        viz_broadening_weather(broadening_loc, incl_scatter=False)
+    return
+
+
+@app.cell
+def _():
     return
 
 
