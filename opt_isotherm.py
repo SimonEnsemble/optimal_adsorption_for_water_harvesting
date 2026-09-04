@@ -1,6 +1,6 @@
 import marimo
 
-__generated_with = "0.24.0"
+__generated_with = "0.17.6"
 app = marimo.App(width="medium")
 
 
@@ -142,41 +142,29 @@ def _(mo):
 @app.function
 # input  T  : deg C
 # output P* : bar
+# https://en.wikipedia.org/wiki/Vapour_pressure_of_water
 def water_p0(T):
-    # coefficients for the following setup:
-    #  log10(P) = A − (B / (T + C))
-    #     P = vapor pressure (bar)
-    #     T = temperature (K)
-    # coefs from NIST https://webbook.nist.gov/cgi/cbook.cgi?ID=C7732185&Mask=4	
-    # T in [293, 343] K
-    if T+273.15 > 293.0 and T+273.15 < 343.0:
-        A = 6.20963
-        B = 2354.731
-        C = 7.559
-    # T in [273., 303] K
-    elif T+273.15 > 273.0 and T+273.15 < 303.0:
-        A = 5.40221
-        B = 1838.675
-        C = -31.737
-    # T in [255.9, 373.] K
-    elif (T+273.15 > 255.9 and T+273.15 < 373.0) or T+273 < 255.9: # low temp
+    if T < 0:
+        # NIST, 255.9 to 373. K
         A = 4.6543
         B = 1435.264
         C = -64.848
-    # T in [379, 573] K
-    elif T+273.15 > 379.0 and T+273.15 < 573.0: # high temp
-        A = 3.55959
-        B = 643.748
-        C = -198.043
-    else:
-        raise Exception(f"T {T} not covered!")
-
-    return 10.0 ** (A - B / ((T + 273.15) + C))
+        return 10.0 ** (A - B / ((T + 273.15) + C))
+    # from Wikipedia; they match NIST
+    if T >= 0 and T <= 100.0:
+        A = 8.07131
+        B = 1730.63
+        C = 233.426
+    elif T > 100:
+        A = 8.14019
+        B = 1810.94
+        C = 244.485
+    return 10.0 ** (A - B / (T + C)) / 750.062
 
 
 @app.cell
 def _():
-    water_p0(99.8) # around 1 ATM
+    water_p0(100.0) # around 1 ATM
     return
 
 
@@ -189,12 +177,12 @@ def _():
 @app.cell
 def _(np, plt):
     def viz_water_p0():
-        Ts = np.linspace(-5.0, 99.8, 250) # deg C
+        Ts = np.linspace(-10.0, 125, 250) # deg C
         plt.figure()
         plt.xlabel("T [°C]")
         plt.ylabel("P* [bar]")
         plt.plot(Ts, [water_p0(T_i) for T_i in Ts], linewidth=3)
-        plt.scatter(100.0, water_p0(99.8))
+        plt.scatter(100.0, water_p0(100))
         plt.show()
 
     viz_water_p0()
@@ -226,9 +214,9 @@ def _(mo):
 def _(dropdown_time, np):
     # temperature range
     if "extend" in dropdown_time.value:
-        T_range = [-30.0, 80.0] # deg C
+        T_range = [-30.0, 150.0] # deg C
     else:
-        T_range = [-20.0, 80.0] # deg C
+        T_range = [-20.0, 150.0] # deg C
 
     # ticks for plots
     T_ticks = np.linspace(T_range[0], T_range[1], 7)
@@ -343,7 +331,6 @@ def _(ccrs, cfeature, city_to_coords, city_to_desert, idea_to_color, plt):
         if savename:
             plt.savefig(savename + ".pdf", format="pdf", bbox_inches="tight", pad_inches=0)
         plt.show()
-
     return (viz_cities,)
 
 
@@ -458,7 +445,7 @@ def _(T_range, idea_to_color, np, os, pd, plt):
         def _attach_ads_des_conditions(self):
             cols_to_put = [
                 'date', 'ads T [°C]', 'ads P/P0', 
-                'des T [°C]', 'des P/P0', 'phi_day_in', 'phi_day_out', 'day_SUR_TEMP', 'day_T_HR_AVG'
+                'des T [°C]', 'des P/P0', 'day_SUR_TEMP', 'day_T_HR_AVG'
             ]
 
             if self.all_missing:
@@ -485,13 +472,12 @@ def _(T_range, idea_to_color, np, os, pd, plt):
             )
 
             self.ads_des_conditions.sort_values(by="date", inplace=True)
-        
+
             ###
             #   compute MOF daytime temperature
             ###
-            alpha = 0.9 # solar absorbance of solar absorber
-            alpha_sand = 0.6
-            self.ads_des_conditions['des T [°C]'] = self.ads_des_conditions['day_T_HR_AVG'] + alpha / alpha_sand * (
+            delta_T_scale_factor = 4.0 # see calibration with field study
+            self.ads_des_conditions['des T [°C]'] = self.ads_des_conditions['day_T_HR_AVG'] + delta_T_scale_factor * (
                 self.ads_des_conditions['day_SUR_TEMP'] - self.ads_des_conditions['day_T_HR_AVG']
             )
 
@@ -503,13 +489,7 @@ def _(T_range, idea_to_color, np, os, pd, plt):
             # saturation pressure at MOF temperature
             p_sat_MOF_temp       = np.array([water_p0(T) for T in self.ads_des_conditions['des T [°C]']])
 
-            # vapor pressure in ambient air
-            p_v_ambient = self.ads_des_conditions['day_RH_HR_AVG'] / 100 * p_sat_condenser_temp
-        
-            self.ads_des_conditions['phi_day_in']  = p_v_ambient           / p_sat_MOF_temp
-            self.ads_des_conditions['phi_day_out'] = p_sat_condenser_temp  / p_sat_MOF_temp
-        
-            self.ads_des_conditions['des P/P0'] = (self.ads_des_conditions['phi_day_in'] + self.ads_des_conditions['phi_day_out']) / 2 * 100
+            self.ads_des_conditions['des P/P0'] = p_sat_condenser_temp  / p_sat_MOF_temp * 100
 
             self.ads_des_conditions = self.ads_des_conditions.rename(
                 columns=
@@ -519,7 +499,7 @@ def _(T_range, idea_to_color, np, os, pd, plt):
                     "night_RH_HR_AVG": 'ads P/P0'
                 }
             )
-        
+
             for rh_col in ['des P/P0', 'ads P/P0']:
                 self.ads_des_conditions[rh_col] = (
                     self.ads_des_conditions[rh_col] / 100.0
@@ -626,7 +606,6 @@ def _(T_range, idea_to_color, np, os, pd, plt):
         def all_consecutive_days(self):
             gaps = self.ads_des_conditions["date"].diff().dropna()
             return (gaps == pd.Timedelta(days=1)).all()
-
     return (WeatherData,)
 
 
@@ -685,7 +664,6 @@ def _(T_range, pd):
             if T_min < T_range[0] or T_max > T_range[1]:
                 print([T_min, T_max])
                 raise Exception("extend T_range")
-
     return (Weather,)
 
 
@@ -699,9 +677,8 @@ def _(mo):
 
 @app.cell(hide_code=True)
 def _(mo):
-    mixed_locations = ["Stovepipe", "Socorro", "Riley", "Yuma", "Utqiagvik"]
-    mixed_locations = ["Socorro", "Stovepipe"]
-    mixed_locations = ["Socorro", "Stovepipe", "Riley", "Utqiagvik"]
+    mixed_locations = ["Socorro", "Stovepipe", "Riley"]
+    # mixed_locations = ["Socorro", "Stovepipe", "Riley", "Utqiagvik"]
 
     dropdown = mo.ui.dropdown(
         options=["Yuma", "Riley", "Stovepipe", "Mercury", "Socorro", "Utqiagvik", "mix"], 
@@ -770,7 +747,6 @@ def _(WeatherData, np, too_many_missing):
                         n_avoid += 1
         print(f"left out: {n_avoid}/{n_tot}")
         return weather_datas
-
     return (get_weather_datas,)
 
 
@@ -885,7 +861,6 @@ def _(T_range, idea_to_color, np, plt, weather):
 
         plt.savefig(f"avg_weather_{temp_or_humid.split()[0]}.pdf", format="pdf", bbox_inches="tight")
         plt.show()
-
     return (draw_avgs,)
 
 
@@ -1059,7 +1034,6 @@ def _(comb, np):
             basis = self.basis_matrix(x)       # (m, n+1)
             val = basis @ np.asarray(bs)       # (m,)
             return val[0] if scalar_input else val
-
     return (BernPolyBasis,)
 
 
@@ -1244,7 +1218,6 @@ def _(BernPolyBasis, colors, inset_axes, np, plt, temp_colormap, w_max):
                 plt.savefig(savename + ".pdf", format="pdf")
 
             plt.show()
-
     return (WaterAdsorptionIsotherm,)
 
 
@@ -1310,7 +1283,6 @@ def _(n_day_period, np, pd):
         ).set_index(["location", "period_label"])["cum water del [kg/kg]"]
 
         return totals
-
     return (get_nday_totals,)
 
 
@@ -1333,7 +1305,6 @@ def _(np):
         val_at_risk = np.percentile(scores, alpha)
         cval_at_risk = np.mean(scores[scores <= val_at_risk])
         return val_at_risk, cval_at_risk
-
     return (var_cvar,)
 
 
@@ -1359,7 +1330,6 @@ def _(alpha, get_nday_totals, n_day_period, var_cvar):
             print("min CVaR: ", min_cvar)
 
         return period_totals, per_location_var, per_location_cvar, min_cvar
-
     return (score_fitness,)
 
 
@@ -1430,7 +1400,6 @@ def _(
         else:
             plt.savefig(weather.tag + "/best_wai_water_del_distn.pdf", format="pdf")
         plt.show()
-
     return (draw_fitness_scores,)
 
 
@@ -1606,7 +1575,6 @@ def _(
             ax_top.axvline(fitness, linestyle="--", color=the_colors[w])
 
         plt.show()
-
     return (compare_wais,)
 
 
@@ -1681,7 +1649,6 @@ def _(my_colors, np, p_ovr_p0_ticks, plt):
                 savename + ".pdf", format="pdf",  bbox_inches="tight"
             )
         plt.show()
-
     return (viz_wais,)
 
 
@@ -1702,7 +1669,6 @@ def _(WaterAdsorptionIsotherm, np):
         else:
             wai.endow_random_isotherm()
         return wai
-
     return (random_birth,)
 
 
@@ -1738,7 +1704,6 @@ def _(np):
         wai.bs[wai.bs < 0.0] = 0.0
         wai.bs[wai.bs > wai.w_max] = wai.w_max
         wai.bs[-1] = wai.w_max
-
     return (mutate,)
 
 
@@ -1772,7 +1737,6 @@ def _(np):
         id_a = ids_tourney[ids_winners[0]]
         id_b = ids_tourney[ids_winners[1]]
         return id_a, id_b
-
     return (run_tournament,)
 
 
@@ -1798,7 +1762,6 @@ def _(WaterAdsorptionIsotherm, np):
         return WaterAdsorptionIsotherm(
             wai_a.n, bs=alpha * wai_a.bs + (1 - alpha) * wai_b.bs
         )
-
     return (random_combination,)
 
 
@@ -1842,7 +1805,6 @@ def _(np):
         wai.bs = np.sort(wai.bs)
 
         return wai
-
     return (random_cross_over,)
 
 
@@ -1919,7 +1881,6 @@ def _(score_fitness):
                 fitness = new_fitness
             else:
                 break 
-
     return (ls_stepify,)
 
 
@@ -2024,7 +1985,6 @@ def _(
             mutate(new_wais[id], eps)
 
         return new_wais
-
     return (evolve,)
 
 
@@ -2032,7 +1992,6 @@ def _(
 def _(random_birth):
     def gen_initial_pop(pop_size, n):
         return [random_birth(n) for _ in range(pop_size)]
-
     return (gen_initial_pop,)
 
 
@@ -2104,7 +2063,6 @@ def _(evolve, gen_initial_pop, ls_stepify, np, score_fitness):
         best_period_totals, _, _, best_fitness = score_fitness(best_wai, weather, verbose=True)
 
         return fitnesses_gen, best_wai_gen, best_wai, best_period_totals, best_fitness
-
     return (do_evolution,)
 
 
@@ -2317,7 +2275,6 @@ def _(pickle):
         with open(pf_name, 'wb') as pf:
             pickle.dump(var, pf)
             print("saved in: ", pf_name)
-
     return (pickle_this,)
 
 
@@ -2484,7 +2441,6 @@ def _(T_range, colors, np, p_ovr_p0_ticks, plt, temp_colormap):
                 savename + ".pdf", format="pdf", bbox_inches="tight"
             )
         plt.show()
-
     return (viz_water_del,)
 
 
@@ -2681,7 +2637,6 @@ def _(
 
         plt.savefig(weather.tag + "/comparison_w_step.pdf", format="pdf")
         plt.show()
-
     return (compare_best_wai_and_best_wai_step,)
 
 
@@ -2709,11 +2664,6 @@ def _(best_wai_step, dropdown, idea_to_color, weather):
     return
 
 
-@app.cell
-def _():
-    return
-
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -2731,7 +2681,6 @@ def _(pickle):
         with open(pf_name, 'rb') as pf:
             var = pickle.load(pf)
         return var
-
     return (unpickle,)
 
 
@@ -2796,7 +2745,6 @@ def _(
         plt.tight_layout()
         plt.savefig("comparison/compare_fitnesses.pdf", format="pdf")
         plt.show()
-
     return (compare_all_wai_fitness,)
 
 
@@ -2838,7 +2786,6 @@ def _(city_to_desert, idea_to_color, np, p_ovr_p0_ticks, plt):
             "comparison/best_wai_comparison.pdf", format="pdf", bbox_inches="tight"
         )
         plt.show()
-
     return (compare_best_wais,)
 
 
@@ -3004,7 +2951,6 @@ def _(
         plt.tight_layout()
         plt.savefig(f"comparison/{comparison_case}_fitness.pdf", format="pdf")
         plt.show()
-
     return (viz_mismatch_fitness,)
 
 
@@ -3162,7 +3108,6 @@ def _(IsotonicRegression, R, np, pd):
                 conditions["des P/P0"].to_numpy(),
             )
             return np.where(w_ads > w_des, w_ads - w_des, 0.0)
-
     return (ExptIsotherm,)
 
 
@@ -3234,7 +3179,6 @@ def _(city_to_desert, idea_to_color, mof_to_color, np, plt):
             plt.savefig(savename + ".pdf", format="pdf", bbox_inches="tight")
 
         plt.show()
-
     return (draw_shape_match,)
 
 
@@ -3288,7 +3232,6 @@ def _(np):
         n_target = wai.water_ads(T, p_ovr_p0s)
 
         return np.sum((n_mix - n_target) ** 2)
-
     return (loss,)
 
 
@@ -3352,7 +3295,6 @@ def _(combinations, loss, minimize, np):
             print(f"  {mof}: {x_opt[mof]:.4f}")
 
         return fits[0][1]
-
     return (do_shape_matching_sparse,)
 
 
@@ -3413,7 +3355,6 @@ def _(city_to_desert, idea_to_color, np, plt):
             plt.savefig(savename + ".pdf", format="pdf", bbox_inches="tight")
 
         plt.show()
-
     return (draw_mixed_shape_match,)
 
 
@@ -3681,7 +3622,6 @@ def _(calendar, season_to_months, sns):
         colors = sns.color_palette("mako", len(seasons))
 
         return seasons, labels, colors
-
     return (get_broadening_seasons_labels_colors,)
 
 
@@ -3729,16 +3669,16 @@ def _(
             y = weather.ads_des_conditions["des P/P0"].to_numpy()
 
             kde = gaussian_kde(np.vstack([x, y]))
-    
+
             pad = 0.25
             xg = np.linspace(0, 1, 300)
             yg = np.linspace(0, 1, 300)
             X, Y = np.meshgrid(xg, yg)
             Z = kde(np.vstack([X.ravel(), Y.ravel()])).reshape(X.shape)
-    
+
             cell = (xg[1] - xg[0]) * (yg[1] - yg[0])
             print(f"mass on grid: {Z.sum() * cell:.4f}")   # want ≈ 1.0
-    
+
             z = np.sort(Z.ravel())[::-1]
             c = np.cumsum(z)
             level = z[np.searchsorted(c, 0.8 * c[-1])]
@@ -3759,8 +3699,55 @@ def _(
     return
 
 
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    # calibrate the temperature we can heat the MOF to
+
+    [field study](https://www.science.org/doi/10.1126/sciadv.aat3198#supplementary-materials)
+
+    22 October 2017 in Scottsdale, AZ
+
+    Fig. 3B ambient daytime air at 2 PM: roughly 35 C
+    > 35° to 40°C during the day
+
+    MOF around 90 °C based on Fig. 3B.
+
+    [another field study](https://chemrxiv.org/doi/abs/10.26434/chemrxiv.15006110/v2) doesn't list the MOF temperature.
+
+    $Q$: solar flux
+    $\alpha$: solar absorptivity
+
+
+    $Q\alpha_{soil} = U_{soil}(T_{soil}-T_{air}) + {\rm conduction}$
+
+    $Q\alpha_{MOF} = U_{MOF}(T_{mof}-T_{air}) + {\rm conduction}$
+
+    neglect conduction, divide:  $T_{mof}=T_{air}+ \alpha_{mof} / \alpha_{soil} U_{soil} / U_{mof}(T_{soil}-T_{air})$
+    """)
+    return
+
+
+@app.cell
+def _(WeatherData):
+    wdata_pheonix = WeatherData("Yuma", [10], 2017)
+    wdata_pheonix.ads_des_conditions[wdata_pheonix.ads_des_conditions["day"] == 22]
+    return
+
+
 @app.cell
 def _():
+    _T_ambient_day = 32.6 # deg C
+    _T_land_day = 46.7 # deg C
+    _T_MOF = 90.0 # deg C
+
+    _Delta_T_pred = _T_land_day - _T_ambient_day
+    print("predicted delta T [deg C]: ", _Delta_T_pred)
+
+    _Delta_T = _T_MOF - _T_ambient_day
+    print("actual delta T [deg C]: ", _Delta_T)
+
+    print("scale factor: ", _Delta_T / _Delta_T_pred)
     return
 
 
