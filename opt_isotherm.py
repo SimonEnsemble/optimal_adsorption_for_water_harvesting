@@ -214,9 +214,9 @@ def _(mo):
 def _(dropdown_time, np):
     # temperature range
     if "extend" in dropdown_time.value:
-        T_range = [-30.0, 150.0] # deg C
+        T_range = [-30.0, 130.0] # deg C
     else:
-        T_range = [-20.0, 150.0] # deg C
+        T_range = [-20.0, 130.0] # deg C
 
     # ticks for plots
     T_ticks = np.linspace(T_range[0], T_range[1], 7)
@@ -476,7 +476,7 @@ def _(T_range, idea_to_color, np, os, pd, plt):
             ###
             #   compute MOF daytime temperature
             ###
-            delta_T_scale_factor = 4.0 # see calibration with field study
+            delta_T_scale_factor = 3.4 # see calibration with field study
             self.ads_des_conditions['des T [°C]'] = self.ads_des_conditions['day_T_HR_AVG'] + delta_T_scale_factor * (
                 self.ads_des_conditions['day_SUR_TEMP'] - self.ads_des_conditions['day_T_HR_AVG']
             )
@@ -677,8 +677,8 @@ def _(mo):
 
 @app.cell(hide_code=True)
 def _(mo):
-    mixed_locations = ["Socorro", "Stovepipe", "Riley"]
-    # mixed_locations = ["Socorro", "Stovepipe", "Riley", "Utqiagvik"]
+    # mixed_locations = ["Socorro", "Stovepipe", "Riley"]
+    mixed_locations = ["Socorro", "Stovepipe", "Riley", "Utqiagvik"]
 
     dropdown = mo.ui.dropdown(
         options=["Yuma", "Riley", "Stovepipe", "Mercury", "Socorro", "Utqiagvik", "mix"], 
@@ -1248,7 +1248,7 @@ def attach_water_delivery(wai, weather, prefix=""):
 
 @app.cell
 def _():
-    n_day_period = 10
+    n_day_period = 5
     return (n_day_period,)
 
 
@@ -1335,7 +1335,7 @@ def _(alpha, get_nday_totals, n_day_period, var_cvar):
 
 @app.cell
 def _():
-    alpha = 20.0
+    alpha = 10.0
     return (alpha,)
 
 
@@ -3730,24 +3730,30 @@ def _(mo):
 
 @app.cell
 def _(WeatherData):
-    wdata_pheonix = WeatherData("Yuma", [10], 2017)
+    wdata_pheonix = WeatherData("Yuma", [10], 2017, time_to_hour={'day': 14, 'night': 5})
     wdata_pheonix.ads_des_conditions[wdata_pheonix.ads_des_conditions["day"] == 22]
     return
 
 
 @app.cell
 def _():
-    _T_ambient_day = 32.6 # deg C
-    _T_land_day = 46.7 # deg C
+    _T_ambient_day = 31.4 # deg C
+    _T_land_day = 47.6 # deg C
     _T_MOF = 90.0 # deg C
 
     _Delta_T_pred = _T_land_day - _T_ambient_day
     print("predicted delta T [deg C]: ", _Delta_T_pred)
 
-    _Delta_T = _T_MOF - _T_ambient_day
+    _T_ambient_day_reported = 35.0 #
+    _Delta_T = _T_MOF - _T_ambient_day_reported
     print("actual delta T [deg C]: ", _Delta_T)
 
     print("scale factor: ", _Delta_T / _Delta_T_pred)
+    return
+
+
+@app.cell
+def _():
     return
 
 
