@@ -1248,7 +1248,7 @@ def attach_water_delivery(wai, weather, prefix=""):
 
 @app.cell
 def _():
-    n_day_period = 5
+    n_day_period = 14
     return (n_day_period,)
 
 
@@ -1335,7 +1335,7 @@ def _(alpha, get_nday_totals, n_day_period, var_cvar):
 
 @app.cell
 def _():
-    alpha = 10.0
+    alpha = 25.0
     return (alpha,)
 
 
@@ -1343,6 +1343,12 @@ def _():
 def _(score_fitness, wai, weather):
     period_totals, per_location_var, per_location_cvar, min_cvar = score_fitness(wai, weather, verbose=True)
     period_totals
+    return (per_location_cvar,)
+
+
+@app.cell
+def _(per_location_cvar):
+    per_location_cvar
     return
 
 
@@ -2055,7 +2061,7 @@ def _(evolve, gen_initial_pop, ls_stepify, np, score_fitness):
             fitnesses = np.array([score_fitness(wai, weather)[-1] for wai in wais])
 
             fitnesses_gen.append(fitnesses)
-            best_wai_gen.append(wais[np.argmax(fitnesses)])
+            best_wai_gen.append(wais[np.argmax(fitnesses)].copy())
 
         best_wai = wais[np.argmax(fitnesses)]
         ls_stepify(best_wai, weather)
@@ -3386,7 +3392,6 @@ def _(
     expt_isotherms,
     shape_match,
     unpickle,
-    x_opt,
 ):
     # summer mix
     if shape_match.value:
@@ -3399,7 +3404,7 @@ def _(
             _x_opt,
             loc="mix",
             season="May-Sep",
-            savename=f"mix_summer/shape_match_{len(x_opt)}"
+            savename=f"mix_summer/shape_match_{len(_x_opt)}"
         )
     return
 
